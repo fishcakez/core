@@ -1,10 +1,10 @@
-defmodule Base do
+defmodule Core do
   @moduledoc """
   Functions for handling process initiation, communication and termination.
 
   This module provides the basic features required for building OTP compliant
   processes. There are a few examples for using these functions to create OTP
-  processes in the documentation for `Base.Behaviour` and `Base.Debug`.
+  processes in the documentation for `Core.Behaviour` and `Core.Debug`.
 
   Many functions in this module are only intended for use in processes initiated
   by functions in this module.
@@ -12,7 +12,7 @@ defmodule Base do
 
   use Behaviour
 
-  defcallback  init(parent, Base.Debug.t, args) :: no_return
+  defcallback  init(parent, Core.Debug.t, args) :: no_return
 
   ## start/spawn types
 
@@ -21,7 +21,7 @@ defmodule Base do
   @type via_name :: { :via, module, any }
   @type name :: nil | local_name | global_name | via_name
   @typep args :: any
-  @type option :: { :timeout, timeout } | { :debug, [Base.Debug.option] } |
+  @type option :: { :timeout, timeout } | { :debug, [Core.Debug.option] } |
     { :spawn, [Process.spawn_opt] }
   @type start_return :: { :ok, pid } | { :ok, pid, any } | :ignore |
     { :error, any }
@@ -55,7 +55,7 @@ defmodule Base do
   defexception CallError, [:target, :process, :label, :request, :reason] do
     def message(exception) do
       "#{format_label(exception.label)} #{inspect(exception.request)} to " <>
-      "#{Base.format(exception.target)} " <>
+      "#{Core.format(exception.target)} " <>
       "failed: #{format_reason(exception.reason, exception.process)}"
     end
 
@@ -144,7 +144,7 @@ defmodule Base do
   ## start/spawn api
 
   @doc """
-  Start a parentless Base process without a link.
+  Start a parentless Core process without a link.
 
   This function will block until the created processes sends an acknowledgement,
   exits or the timeout is reached. If the timeout is reached the created process
@@ -166,7 +166,7 @@ defmodule Base do
   end
 
   @doc """
-  Start a Base process with a link.
+  Start a Core process with a link.
 
   This function will block until the created processes sends an acknowledgement,
   exits or the timeout is reached. If the timeout is reached the created process
@@ -188,7 +188,7 @@ defmodule Base do
   end
 
   @doc """
-  Spawn a parentless Base process without a link.
+  Spawn a parentless Core process without a link.
 
   A process created with this function will automatically send error reports to
   the error logger if an exception is raised (and not rescued). A crash report
@@ -205,7 +205,7 @@ defmodule Base do
   end
 
   @doc """
-  Spawn a Base process with a link.
+  Spawn a Core process with a link.
 
   A process created with this function will automatically send error reports to
   the error logger if an exception is raised (and not rescued). A crash report
@@ -309,8 +309,8 @@ defmodule Base do
 
   This function is only intended for use by processes created by this module.
   """
-  @spec init_stop(module, parent, Base.Debug.t, args, reason,
-    Base.Debug.event) :: no_return
+  @spec init_stop(module, parent, Core.Debug.t, args, reason,
+    Core.Debug.event) :: no_return
   def init_stop(mod, parent, debug, args, reason, event \\ nil)
 
   def init_stop(mod, parent, debug, args, reason, event) do
@@ -319,14 +319,14 @@ defmodule Base do
     if starter === self() and type === :abnormal do
       report_init_stop(mod, parent, args, reason, event)
     end
-    if type === :abnormal, do: Base.Debug.print(debug)
+    if type === :abnormal, do: Core.Debug.print(debug)
     unregister()
     if starter !== self(), do: :proc_lib.init_ack(starter, { :error, reason })
     exit(reason)
   end
 
   @doc """
-  Stops a Base process.
+  Stops a Core process.
 
   Before exiting the process may print debug information and will send an error
   report to the error logger when the reason is not `:normal`, `:shutdown` or of
@@ -340,15 +340,15 @@ defmodule Base do
 
   This function is only intended for use by processes created by this module.
   """
-  @spec stop(module, state, parent, Base.Debug.t, reason,
-    Base.Debug.event) :: no_return
+  @spec stop(module, state, parent, Core.Debug.t, reason,
+    Core.Debug.event) :: no_return
   def stop(mod, state, parent, debug, reason, event \\ nil)
 
   def stop(mod, state, parent, debug, reason, event) do
     type = exit_type(reason)
     if type === :abnormal do
       report_stop(mod, state, parent, reason, event)
-      Base.Debug.print(debug)
+      Core.Debug.print(debug)
     end
     exit(reason)
   end
@@ -356,7 +356,7 @@ defmodule Base do
   ## communication api
 
   @doc """
-  Returns the pid or `{ local_name, node }` of the Base process associated with
+  Returns the pid or `{ local_name, node }` of the Core process associated with
   the name or process.
   Returns `nil` if no process is associated with the name.
 
@@ -395,17 +395,17 @@ defmodule Base do
   end
 
   @doc """
-  Calls the Base process associated the with name or process and returns the
+  Calls the Core process associated the with name or process and returns the
   reponse.
-  Raises a `Base.CallError` if the process does not reply before the timeout or
+  Raises a `Core.CallError` if the process does not reply before the timeout or
   if the process exits without replying.
 
   The message is sent in the form `{ label, from, request }`. A response is sent
   by calling `reply(from, response)`.
 
-  Rescuing a `Base.CallError` may result in unexpected messages arriving in the
+  Rescuing a `Core.CallError` may result in unexpected messages arriving in the
   calling processes mailbox. Therefore it is recommended to terminate soon after
-  if a `Base.CallError` must be rescued.
+  if a `Core.CallError` must be rescued.
   """
   @spec call(t, label, request, timeout) :: response
   def call(target, label, request, timeout) do
@@ -416,7 +416,7 @@ defmodule Base do
           when is_atom(local_name) and is_atom(node_name) ->
         call(process, target, label, request, timeout)
       nil ->
-        raise Base.CallError, [target: target, label: label, request: request,
+        raise Core.CallError, [target: target, label: label, request: request,
           reason: :noproc]
     end
   end
@@ -438,7 +438,7 @@ defmodule Base do
   end
 
   @doc """
-  Sends a message to the Base process associated with the name or process.
+  Sends a message to the Core process associated with the name or process.
 
   This function will not raise an exception if there is not a process associated
   with the name.
@@ -461,7 +461,7 @@ defmodule Base do
   end
 
   @doc """
-  Sends a message to the Base process associated with the name or process.
+  Sends a message to the Core process associated with the name or process.
 
   This function will raise an ArgumentError if a name is provided and no process
   is associated with the name - unless the name is for a locally registered name
@@ -484,7 +484,7 @@ defmodule Base do
   ## hibernation api
 
   @doc """
-  Hibernates the Base process. Must be used to hibernate Base processes to
+  Hibernates the Core process. Must be used to hibernate Core processes to
   ensure exceptions (and exits) are handled correctly.
 
   This function throws away the stack and should only be used as a tail call.
@@ -494,7 +494,7 @@ defmodule Base do
 
   This function is only intended for use by processes created by this module.
   """
-  @spec hibernate(module, atom, state, parent, Base.Debug.t, [any]) :: no_return
+  @spec hibernate(module, atom, state, parent, Core.Debug.t, [any]) :: no_return
   def hibernate(mod, fun, state, parent, debug, args \\ []) do
     :proc_lib.hibernate(__MODULE__, :continue,
       [mod, fun, state, parent, debug, args])
@@ -530,14 +530,14 @@ defmodule Base do
     catch
       # Turn throw into an exception.
       :throw, value ->
-        exception = Base.UncaughtThrowError[actual: value]
+        exception = Core.UncaughtThrowError[actual: value]
         base_stop(mod, parent, { exception, System.stacktrace() })
       # Exits are not caught as they are an explicit intention to exit.
     end
   end
 
   @doc false
-  @spec continue(module, atom, state, parent, Base.Debug.t, args) :: no_return
+  @spec continue(module, atom, state, parent, Core.Debug.t, args) :: no_return
   def continue(mod, fun, state, parent, debug, args) do
     try do
       apply(mod, fun, [state, parent, debug] ++ args)
@@ -551,7 +551,7 @@ defmodule Base do
     catch
       # Turn throw into an exception.
       :throw, value ->
-        exception = Base.UncaughtThrowError[actual: value]
+        exception = Core.UncaughtThrowError[actual: value]
         base_stop(mod, parent, { exception, System.stacktrace() })
       # Exits are not caught as they are an explicit intention to exit.
     end
@@ -646,9 +646,9 @@ defmodule Base do
   defp new_debug(opts) do
     case Keyword.get(opts, :debug, nil) do
       nil ->
-        Base.Debug.new()
+        Core.Debug.new()
       debug_opts ->
-        Base.Debug.new(debug_opts)
+        Core.Debug.new(debug_opts)
     end
   end
 
@@ -757,7 +757,7 @@ defmodule Base do
           _other ->
             :nomonitor
         end
-        raise Base.CallError, [target: target, process: process, label: label,
+        raise Core.CallError, [target: target, process: process, label: label,
           request: request, reason: reason]
     else
       tag ->
@@ -767,18 +767,18 @@ defmodule Base do
             Process.demonitor(tag, [:flush])
             response
           { :DOWN, ^tag, _, _, :noproc } ->
-            raise Base.CallError, [target: target, process: process,
+            raise Core.CallError, [target: target, process: process,
               label: label, request: request, reason: :noproc]
           { :DOWN, ^tag, _, _, :noconnection } ->
-            raise Base.CallError, [target: target, process: process,
+            raise Core.CallError, [target: target, process: process,
               label: label, request: request, reason: :noconnection]
           { :DOWN, ^tag, _, _, reason } ->
-            raise Base.CallError, [target: target, process: process,
+            raise Core.CallError, [target: target, process: process,
               label: label, request: request, reason: { :EXIT, reason }]
         after
           timeout ->
             Process.demonitor(tag, [:flush])
-            raise Base.CallError, [target: target, process: process,
+            raise Core.CallError, [target: target, process: process,
               label: label, request: request, reason: :timeout]
         end
     end

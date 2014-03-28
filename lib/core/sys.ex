@@ -1,4 +1,4 @@
-defmodule Base.Sys do
+defmodule Core.Sys do
 
   use Behaviour
 
@@ -26,14 +26,14 @@ defmodule Base.Sys do
   Called when the process should re-enter it's loop after handling
   system messages.
   """
-  defcallback system_continue(data, Base.parent, Base.Debug.t) :: no_return
+  defcallback system_continue(data, Core.parent, Core.Debug.t) :: no_return
 
   @doc """
   Called when the process should terminate after handling system
   messages, i.e. an exit signal was received from the parent process
   when the current process is trapping exits.
   """
-  defcallback system_terminate(data, Base.parent, Base.Debug.t, any) ::
+  defcallback system_terminate(data, Core.parent, Core.Debug.t, any) ::
     no_return
 
   ## types
@@ -89,10 +89,10 @@ defmodule Base.Sys do
     def message(exception) do
       case exception.level do
         0 ->
-          "process was not started by Base or did not use Base to hibernate"
+          "process was not started by Core or did not use Core to hibernate"
         # level is 3 or more
         level ->
-          "Base.Sys loop was not entered by a tail call, #{level-2} catch(es)"
+          "Core.Sys loop was not entered by a tail call, #{level-2} catch(es)"
       end
     end
   end
@@ -126,10 +126,10 @@ defmodule Base.Sys do
 
   ## Examples
 
-      use Base.Sys.Behaviour
+      use Core.Sys.Behaviour
 
       defp loop(data, parent, debug) do
-        Base.Sys.receive(__MODULE__, data, parent, debug) do
+        Core.Sys.receive(__MODULE__, data, parent, debug) do
           msg ->
             IO.puts(:stdio, inspect(msg))
             loop(data, parent, debug)
@@ -179,7 +179,7 @@ defmodule Base.Sys do
   Pings an OTP process to see if it is responsive to system messages.
   Returns `:pong` on success.
   """
-  @spec ping(Base.t, timeout) :: :pong
+  @spec ping(Core.t, timeout) :: :pong
   def ping(process, timeout \\ default_timeout()) do
     { :error, { :unknown_system_msg, :ping } } = call(process, :ping, timeout)
     :pong
@@ -188,7 +188,7 @@ defmodule Base.Sys do
   @doc """
   Suspends an OTP process so that it can only handle system messages.
   """
-  @spec suspend(Base.t, timeout) :: :ok
+  @spec suspend(Core.t, timeout) :: :ok
   def suspend(process, timeout \\ default_timeout()) do
     call(process, :suspend, timeout)
   end
@@ -196,7 +196,7 @@ defmodule Base.Sys do
   @doc """
   Resumes an OTP process that has been system suspended.
   """
-  @spec resume(Base.t, timeout) :: :ok
+  @spec resume(Core.t, timeout) :: :ok
   def resume(process, timeout \\ default_timeout()) do
     call(process, :resume, timeout)
   end
@@ -204,7 +204,7 @@ defmodule Base.Sys do
   @doc """
   Returns the state of an OTP process.
   """
-  @spec get_state(Base.t, timeout) :: state
+  @spec get_state(Core.t, timeout) :: state
   def get_state(process, timeout \\ default_timeout()) do
     state_call(process, :get_state, timeout)
   end
@@ -212,7 +212,7 @@ defmodule Base.Sys do
   @doc """
   Sets the state of an OTP process.
   """
-  @spec set_state(Base.t, state, timeout) :: :ok
+  @spec set_state(Core.t, state, timeout) :: :ok
   def set_state(process, state, timeout \\ default_timeout()) do
     update = fn(_old_state) -> state end
     ^state = state_call(process, { :replace_state, update }, timeout)
@@ -223,7 +223,7 @@ defmodule Base.Sys do
   Updates the state of an OTP process.
   Returns the updated state.
   """
-  @spec update_state(Base.t, update, timeout) :: state
+  @spec update_state(Core.t, update, timeout) :: state
   def update_state(process, update, timeout \\ default_timeout()) do
     state_call(process, { :replace_state, update }, timeout)
   end
@@ -234,7 +234,7 @@ defmodule Base.Sys do
   This function will return alot of information, including the process
   dictionary of the target process.
   """
-  @spec get_status(Base.t, timeout) :: status
+  @spec get_status(Core.t, timeout) :: status
   def get_status(process, timeout \\ default_timeout()) do
     call(process, :get_status, timeout)
       |> parse_status()
@@ -246,7 +246,7 @@ defmodule Base.Sys do
   This function will return any data held about a process. In many cases
   this will return the same as `get_state/2`.
   """
-  @spec get_data(Base.t, timeout) :: data | nil
+  @spec get_data(Core.t, timeout) :: data | nil
   def get_data(process, timeout \\ default_timeout()) do
     get_status(process, timeout)
       |> Dict.get(:data)
@@ -257,17 +257,17 @@ defmodule Base.Sys do
 
   Can only be used on system suspended processes.
   """
-  @spec change_data(Base.t, module, vsn, extra, timeout) :: :ok
+  @spec change_data(Core.t, module, vsn, extra, timeout) :: :ok
   def change_data(process, mod, oldvsn, extra, timeout \\ default_timeout()) do
     case state_call(process, { :change_code, mod, oldvsn, extra }, timeout) do
       :ok ->
         :ok
       # direct :sys module raised an error/exited
       { :error, { :EXIT, _ } = reason } ->
-        raise Base.Sys.CallbackError[reason: reason]
+        raise Core.Sys.CallbackError[reason: reason]
       # direct :sys module did not return { :ok, data }
       { :error, other } ->
-        raise Base.Sys.CallbackError[reason: MatchError[term: other]]
+        raise Core.Sys.CallbackError[reason: MatchError[term: other]]
     end
   end
 
@@ -276,25 +276,25 @@ defmodule Base.Sys do
 
   The oldest event is at the head of the list.
   """
-  @spec get_log(Base.t, timeout) :: [Base.Debug.event]
+  @spec get_log(Core.t, timeout) :: [Core.Debug.event]
   def get_log(process, timeout \\ default_timeout()) do
     debug_call(process, { :log, :get }, timeout)
-      |> Base.Debug.log_from_raw()
+      |> Core.Debug.log_from_raw()
   end
 
   @doc """
   Prints any logged events created by an OTP process to `:stdio`.
   """
-  @spec print_log(Base.t, timeout) :: :ok
+  @spec print_log(Core.t, timeout) :: :ok
   def print_log(process, timeout \\ default_timeout()) do
     raw_log = debug_call(process, { :log, :get }, timeout)
-    Base.Debug.write_raw_log(:stdio, process, raw_log)
+    Core.Debug.write_raw_log(:stdio, process, raw_log)
   end
 
   @doc """
   Sets the number of logged events to store for an OTP process.
   """
-  @spec set_log(Base.t, non_neg_integer | boolean, timeout) :: :ok
+  @spec set_log(Core.t, non_neg_integer | boolean, timeout) :: :ok
   def set_log(process, max, timeout \\ default_timeout())
 
   def set_log(process, 0, timeout) do
@@ -309,7 +309,7 @@ defmodule Base.Sys do
   Set the file to log events to for an OTP process.
   `nil` will turn off logging events to file.
   """
-  @spec set_log_file(Base.t, Path.t | nil, timeout) :: :ok
+  @spec set_log_file(Core.t, Path.t | nil, timeout) :: :ok
   def set_log_file(process, path, timeout \\ default_timeout())
 
   def set_log_file(process, nil, timeout) do
@@ -329,19 +329,19 @@ defmodule Base.Sys do
   Returns stats about an OTP process if it is collecting statistics.
   Otherwise returns `nil`.
   """
-  @spec get_stats(Base.t, timeout) :: Base.Debug.stats | nil
+  @spec get_stats(Core.t, timeout) :: Core.Debug.stats | nil
   def get_stats(process, timeout \\ default_timeout()) do
     debug_call(process, { :statistics, :get }, timeout)
-      |> Base.Debug.stats_from_raw()
+      |> Core.Debug.stats_from_raw()
   end
 
   @doc """
   Prints statistics collected by an OTP process to `:stdio`.
   """
-  @spec print_stats(Base.t, timeout) :: :ok
+  @spec print_stats(Core.t, timeout) :: :ok
   def print_stats(process, timeout \\ default_timeout()) do
     stats = get_stats(process, timeout)
-    Base.Debug.write_stats(:stdio, process, stats)
+    Core.Debug.write_stats(:stdio, process, stats)
   end
 
   @doc """
@@ -349,7 +349,7 @@ defmodule Base.Sys do
   `true` will collect statistics.
   `false` will not collect statistics.
   """
-  @spec set_stats(Base.t, boolean, timeout) :: :ok
+  @spec set_stats(Core.t, boolean, timeout) :: :ok
   def set_stats(process, flag, timeout \\ default_timeout())
       when is_boolean(flag) do
     debug_call(process, { :statistics, flag }, timeout)
@@ -360,7 +360,7 @@ defmodule Base.Sys do
   `true` will print events.
   `false` will not print events.
   """
-  @spec set_trace(Base.t, boolean, timeout) :: :ok
+  @spec set_trace(Core.t, boolean, timeout) :: :ok
   def set_trace(process, flag, timeout \\ default_timeout())
       when is_boolean(flag) do
     debug_call(process, { :trace, flag }, timeout)
@@ -370,7 +370,7 @@ defmodule Base.Sys do
   Sets a hook to act on events for an OTP process.
   Setting the hook state to `nil` will remove the hook.
   """
-  @spec set_hook(Base.t, Base.Debug.hook, Base.Debug.hook_state | nil,
+  @spec set_hook(Core.t, Core.Debug.hook, Core.Debug.hook_state | nil,
       timeout) :: :ok
   def set_hook(process, hook, state, timeout \\ default_timeout())
 
@@ -385,7 +385,7 @@ defmodule Base.Sys do
   ## receive macro api
 
   @doc false
-  @spec message(__MODULE__, data, Base.parent, Base.Debug.t, any, Base.from) ::
+  @spec message(__MODULE__, data, Core.parent, Core.Debug.t, any, Core.from) ::
     no_return
   def message(mod, data, parent, debug, :get_state, from) do
     handle_get_state([mod | data], parent, debug, from)
@@ -420,18 +420,18 @@ defmodule Base.Sys do
         { :ok, state }
     rescue
       # Callback failed in a callback of mod
-      exception in [Base.Sys.CallbackError] ->
+      exception in [Core.Sys.CallbackError] ->
         raise exception, []
       exception ->
-        raise Base.Sys.CallbackError,
+        raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_get_state, 1), reason: exception
     catch
       :throw, value ->
-        exception = Base.UncaughtThrowError[actual: value]
-        raise Base.Sys.CallbackError,
+        exception = Core.UncaughtThrowError[actual: value]
+        raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_get_state, 1), reason: exception
       :exit, reason ->
-        raise Base.Sys.CallbackError,
+        raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_get_state, 1),
           reason: { :EXIT, reason }
     end
@@ -446,20 +446,20 @@ defmodule Base.Sys do
         { :ok, state, [mod | data] }
     rescue
       # Callback failed in a callback of mod
-      exception in [Base.Sys.CallbackError] ->
+      exception in [Core.Sys.CallbackError] ->
         raise exception, []
       exception ->
-        raise Base.Sys.CallbackError,
+        raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_update_state, 2),
           reason: exception
     catch
       :throw, value ->
-        exception = Base.UncaughtThrowError[actual: value]
-        raise Base.Sys.CallbackError,
+        exception = Core.UncaughtThrowError[actual: value]
+        raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_update_state, 2),
           reason: exception
       :exit, reason ->
-        raise Base.Sys.CallbackError,
+        raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_update_state, 2),
           reason: { :EXIT, reason }
     end
@@ -475,19 +475,19 @@ defmodule Base.Sys do
         base_status ++ [{ :data, [{ 'Module data', mod_data }] }]
     rescue
       exception ->
-        exception2 = Base.Sys.CallbackError[
+        exception2 = Core.Sys.CallbackError[
           action: :erlang.make_fun(mod, :system_get_data, 1),
           reason: exception]
         format_status_error(base_status, data, exception2)
     catch
       :throw, value ->
-        exception = Base.UncaughtThrowError[actual: value]
-        exception2 = Base.Sys.CallbackError[
+        exception = Core.UncaughtThrowError[actual: value]
+        exception2 = Core.Sys.CallbackError[
           action: :erlang.make_fun(mod, :system_get_data, 1),
           reason: exception]
         format_status_error(base_status, data, exception2)
       :exit, reason ->
-        exception = Base.Sys.CallbackError[
+        exception = Core.Sys.CallbackError[
           action: :erlang.make_fun(mod, :system_get_data, 1),
           reason: { :EXIT, reason }]
         format_status_error(base_status, data, exception)
@@ -503,22 +503,22 @@ defmodule Base.Sys do
         { :ok, [mod | data] }
     rescue
       # Callback failed in a callback of mod.
-      exception in [Base.Sys.CallbackError] ->
+      exception in [Core.Sys.CallbackError] ->
         code_change_error(exception)
       exception ->
-        exception2 = Base.Sys.CallbackError[
+        exception2 = Core.Sys.CallbackError[
           action: :erlang.make_fun(mod, :system_change_data, 4),
           reason: exception]
         code_change_error(exception2)
     catch
       :throw, value ->
-        exception = Base.UncaughtThrowError[actual: value]
-        exception2 = Base.Sys.CallbackError[
+        exception = Core.UncaughtThrowError[actual: value]
+        exception2 = Core.Sys.CallbackError[
           action: :erlang.make_fun(mod, :system_change_data, 4),
           reason: exception]
         code_change_error(exception2)
       :exit, reason ->
-        exception = Base.Sys.CallbackError[
+        exception = Core.Sys.CallbackError[
           action: :erlang.make_fun(mod, :system_change_data, 4),
           reason: { :EXIT, reason }]
         code_change_error(exception)
@@ -535,7 +535,7 @@ defmodule Base.Sys do
         unquote(mod).system_terminate(unquote(data), unquote(parent),
           unquote(debug), reason)
       { :system, from, msg } ->
-        Base.Sys.message(unquote(mod), unquote(data), unquote(parent),
+        Core.Sys.message(unquote(mod), unquote(data), unquote(parent),
           unquote(debug), msg, from)
     end
   end
@@ -543,7 +543,7 @@ defmodule Base.Sys do
   ## calls
 
   defp call(process, request, timeout) do
-    Base.call(process, :system, request, timeout)
+    Core.call(process, :system, request, timeout)
   end
 
   defp state_call(process, request, timeout) do
@@ -551,9 +551,9 @@ defmodule Base.Sys do
       { :ok, result } ->
         result
       { :error, { :unknown_system_msg, { :change_code, _, _, _ } } } ->
-        raise ArgumentError, message: "#{Base.format(process)} is running"
+        raise ArgumentError, message: "#{Core.format(process)} is running"
       { :error, { :unknown_system_msg, _request } } ->
-        raise ArgumentError, message: "#{Base.format(process)} is suspended"
+        raise ArgumentError, message: "#{Core.format(process)} is suspended"
       :ok ->
         :ok
       # exception raised by this module, raise it.
@@ -563,14 +563,14 @@ defmodule Base.Sys do
       # raised in a direct :sys module, normalize and raise.
       { :error, { :callback_failed, action, { :error, error } } } ->
         exception = Exception.normalize(error)
-        raise Base.Sys.CallbackError, action: action, reason: exception
+        raise Core.Sys.CallbackError, action: action, reason: exception
       # raised in a direct :sys  module, make exception and raise.
       { :error, { :callback_failed, action, { :throw, value } } } ->
-        exception = Base.UncaughtThrowError[actual: value]
-        raise Base.Sys.CallbackError, action: action, reason: exception
+        exception = Core.UncaughtThrowError[actual: value]
+        raise Core.Sys.CallbackError, action: action, reason: exception
       # raised in a direct :sys module, raise with { :EXIT, reason }
       { :error, { :calback_failed, action, { :exit, reason } } } ->
-        raise Base.Sys.CallbackError, action: action, reason: { :EXIT, reason }
+        raise Core.Sys.CallbackError, action: action, reason: { :EXIT, reason }
       state ->
         state
     end
@@ -638,13 +638,13 @@ defmodule Base.Sys do
         []
       { _max, rev_raw_log } ->
         Enum.reverse(rev_raw_log)
-          |> Base.Debug.log_from_raw()
+          |> Core.Debug.log_from_raw()
     end
   end
 
   defp parse_status_stats(status_data) do
     get(status_data, 'Statistics', :no_statistics)
-      |> Base.Debug.stats_from_raw()
+      |> Core.Debug.stats_from_raw()
   end
 
   defp get_mod_data(__MODULE__, status_data) do
@@ -673,13 +673,13 @@ defmodule Base.Sys do
       system_get_state([mod | data])
     else
       { :ok, _state } = response ->
-        Base.reply(from, response)
+        Core.reply(from, response)
         system_continue(parent, debug, [mod | data])
     catch
       class, reason ->
         action = { __MODULE__, :get_state }
         reason2 = { :callback_failed, action, { class, reason } }
-        Base.reply(from, { :error, reason2 })
+        Core.reply(from, { :error, reason2 })
         system_continue(parent, debug, [mod | data])
     end
   end
@@ -690,23 +690,23 @@ defmodule Base.Sys do
       { :ok, _state, _mod_data } = system_replace_state(replace, [mod | data])
     else
       { :ok, state, [mod | data] } ->
-        Base.reply(from, { :ok, state })
+        Core.reply(from, { :ok, state })
         system_continue(parent, debug, [mod | data])
     catch
       class, reason ->
         action = { __MODULE__, :replace_state }
         reason2 = { :callback_failed, action, { class, reason } }
-        Base.reply(from, { :error, reason2 })
+        Core.reply(from, { :error, reason2 })
         system_continue(parent, debug, [mod | data])
     end
   end
 
   defp format_base_status(sys_status, parent, mod, debug) do
-    header = String.to_char_list!("Status for #{inspect(mod)} #{Base.format()}")
+    header = String.to_char_list!("Status for #{inspect(mod)} #{Core.format()}")
     log = get_status_log(debug)
     stats = get_status_stats(debug)
     data = [{ 'Status', sys_status }, { 'Parent', parent },
-      { 'Name', Base.get_name() }, { 'Logged events', log },
+      { 'Name', Core.get_name() }, { 'Logged events', log },
       { 'Statistics', stats }, { 'Module', mod }]
     [{ :header, header }, { :data, data }]
   end
@@ -723,7 +723,7 @@ defmodule Base.Sys do
 
   defp get_status_stats(debug) do
     try do
-      Base.Debug.get_raw_stats(debug)
+      Core.Debug.get_raw_stats(debug)
     rescue
       _exception ->
         :no_statistics
@@ -742,7 +742,7 @@ defmodule Base.Sys do
     # Does not match { :ok, data } causing { :error, { :callback_failed, ..}} to
     # be returned by :sys. This is the same form as the replace/get_state error
     # message returned in 17.0 final. Therefore even though it is handled
-    # differently in :sys, to Base.Sys modules it will appear to be handled the
+    # differently in :sys, to Core.Sys modules it will appear to be handled the
     # same as replace/get_state.
     { :callback_failed, { __MODULE__, :system_code_change },
       { :error, exception } }
@@ -750,27 +750,27 @@ defmodule Base.Sys do
 
   defp continue(mod, fun, data, parent, debug, args \\ []) do
     case Process.info(self(), :catchlevel) do
-      # Assume :proc_lib catch but no Base catch due to hibernation.
+      # Assume :proc_lib catch but no Core catch due to hibernation.
       { :catchlevel, 1 } ->
-        # Use Base to re-add Base catch for logging exceptions.
-        Base.continue(mod, fun, data, parent, debug, args)
-      # Assume :proc_lib catch and Base catch, i.e. no hibernation.
+        # Use Core to re-add Core catch for logging exceptions.
+        Core.continue(mod, fun, data, parent, debug, args)
+      # Assume :proc_lib catch and Core catch, i.e. no hibernation.
       { :catchlevel, 2 } ->
         apply(mod, fun, [data, parent, debug] ++ args)
-      # Either not a Base/:proc_lib process OR
-      # Base.Sys.receive/4 macro was used inside a catch.
+      # Either not a Core/:proc_lib process OR
+      # Core.Sys.receive/4 macro was used inside a catch.
       { :catchlevel, level } ->
         try do
-          raise Base.Sys.CatchLevelError, level: level
+          raise Core.Sys.CatchLevelError, level: level
         rescue
           exception ->
             # Hibernation didn't occur (level would be 1) so generate a
             # stacktrace (and exception), which hopefully will be logged by mod.
             reason = { exception, System.stacktrace()}
-            # Use Base to add Base catch which may log an exception if one is
-            # raised. If we have two levels (or more!) of the Base catch an
+            # Use Core to add Core catch which may log an exception if one is
+            # raised. If we have two levels (or more!) of the Core catch an
             # exception will only be logged once.
-            Base.continue(mod, :system_terminate, data, parent, debug,
+            Core.continue(mod, :system_terminate, data, parent, debug,
               [reason])
         end
     end

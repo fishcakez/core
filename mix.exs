@@ -1,8 +1,8 @@
-defmodule Base.Mixfile do
+defmodule Core.Mixfile do
   use Mix.Project
 
   def project do
-    [ app: :base,
+    [ app: :core,
       version: "0.1.0",
       elixir: "~> 0.13.0-dev",
       deps: deps(Mix.env) ]
@@ -10,7 +10,7 @@ defmodule Base.Mixfile do
 
   def application do
     [ applications: [],
-      mod: { Base.App, [] }]
+      mod: { Core.App, [] }]
   end
 
   defp deps(:prod) do

@@ -1,4 +1,4 @@
-defmodule Base.Debug.Supervisor do
+defmodule Core.Debug.Supervisor do
   @moduledoc false
 
   use Supervisor.Behaviour
@@ -10,7 +10,7 @@ defmodule Base.Debug.Supervisor do
   ## :supervisor api
 
   def init(nil) do
-    Base.Debug.ensure_table()
+    Core.Debug.ensure_table()
     supervise([], strategy: :one_for_one)
   end
 

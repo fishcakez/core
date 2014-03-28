@@ -1,8 +1,8 @@
-defmodule Base.Register do
+defmodule Core.Register do
   @moduledoc """
   Behaviour for custom process registers.
 
-  `Base` (and `Base.Sys`) can make use of custom registers by using names of the
+  `Core` (and `Core.Sys`) can make use of custom registers by using names of the
   form `{ :via, module, name }`. `:gen_server`, `supervisor`, `:gen_event`,
   `gen_fsm`, `:sys` and other modules  from Erlang/OTP can use the custom
   register in the same way. For an example of a custom register see `:global`

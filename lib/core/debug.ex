@@ -1,4 +1,4 @@
-defmodule Base.Debug do
+defmodule Core.Debug do
   @moduledoc """
   Functions for handling debug events and statistics.
 
@@ -9,56 +9,56 @@ defmodule Base.Debug do
 
   ## Examples
 
-      defmodule Base.PingPong do
+      defmodule Core.PingPong do
 
-        use Base.Behaviour
+        use Core.Behaviour
 
-        @spec ping(Base.t) :: :pong
-        def ping(process), do: Base.call(process, __MODULE__, :ping, 5000)
+        @spec ping(Core.t) :: :pong
+        def ping(process), do: Core.call(process, __MODULE__, :ping, 5000)
 
-        @spec count(Base.t) :: non_neg_integer
-        def count(process), do: Base.call(process, __MODULE__, :count, 5000)
+        @spec count(Core.t) :: non_neg_integer
+        def count(process), do: Core.call(process, __MODULE__, :count, 5000)
 
-        @spec close(Base.t) :: :ok
-        def close(process), do: Base.call(process, __MODULE__, :close, 5000)
+        @spec close(Core.t) :: :ok
+        def close(process), do: Core.call(process, __MODULE__, :close, 5000)
 
         @spec start_link() :: { :ok, pid }
         def start_link() do
-          Base.start_link(nil, __MODULE__, nil,
+          Core.start_link(nil, __MODULE__, nil,
             [{ :debug, [{ :log, 10 }, { :stats, true }] }])
         end
 
         def init(_parent, debug, nil) do
-          Base.init_ack()
+          Core.init_ack()
           loop(0, debug)
         end
 
         defp loop(count, debug) do
           receive do
             { __MODULE__, from, :ping } ->
-              debug = Base.Debug.event(debug, { :in, :ping, elem(from, 0) })
-              Base.reply(from, :pong)
-              debug = Base.Debug.event(debug, { :out, :pong, elem(from, 0) })
+              debug = Core.Debug.event(debug, { :in, :ping, elem(from, 0) })
+              Core.reply(from, :pong)
+              debug = Core.Debug.event(debug, { :out, :pong, elem(from, 0) })
               count = count + 1
-              debug = Base.Debug.event(debug, { :count, count })
+              debug = Core.Debug.event(debug, { :count, count })
               loop(count, debug)
             { __MODULE__, from, :count } ->
-              debug = Base.Debug.event(debug, { :in, :count, elem(from, 0) })
-              Base.reply(from, count)
-              debug = Base.Debug.event(debug, { :out, count, elem(from, 0) })
+              debug = Core.Debug.event(debug, { :in, :count, elem(from, 0) })
+              Core.reply(from, count)
+              debug = Core.Debug.event(debug, { :out, count, elem(from, 0) })
               loop(count, debug)
             { __MODULE__, from, :close } ->
-              debug = Base.Debug.event(debug, { :in, :close, elem(from, 0) })
-              Base.reply(from, :ok)
-              debug = Base.Debug.event(debug, { :out, :ok, elem(from, 0)  })
+              debug = Core.Debug.event(debug, { :in, :close, elem(from, 0) })
+              Core.reply(from, :ok)
+              debug = Core.Debug.event(debug, { :out, :ok, elem(from, 0)  })
               terminate(count, debug)
           end
         end
 
         defp terminate(count, debug) do
-          debug = Base.Debug.event(debug, { :EXIT, :normal })
-          Base.Debug.print_stats(debug)
-          Base.Debug.print_log(debug)
+          debug = Core.Debug.event(debug, { :EXIT, :normal })
+          Core.Debug.print_stats(debug)
+          Core.Debug.print_log(debug)
           exit(:normal)
         end
 
@@ -98,8 +98,8 @@ defmodule Base.Debug do
           [] ->
             unquote(debug)
           _ ->
-            :sys.handle_debug(unquote(debug), &Base.Debug.print_event/3,
-              Base.get_name(), unquote(event))
+            :sys.handle_debug(unquote(debug), &Core.Debug.print_event/3,
+              Core.get_name(), unquote(event))
         end
       end
     else
@@ -150,9 +150,9 @@ defmodule Base.Debug do
   ## event
 
   @doc false
-  @spec print_event(IO.device, event, Base.name) :: :ok
+  @spec print_event(IO.device, event, Core.name) :: :ok
   def print_event(device, event, name) do
-    header = "** Base.Debug #{Base.format(name)} "
+    header = "** Core.Debug #{Core.format(name)} "
     formatted_event = format_event(event)
     IO.puts(device, [header | formatted_event])
   end
@@ -244,18 +244,18 @@ defmodule Base.Debug do
   end
 
   @doc false
-  @spec write_raw_log(IO.device, Base.t, [{ event, any, report }]) :: :ok
-  def write_raw_log(device, process \\ Base.get_name(), raw_log)
+  @spec write_raw_log(IO.device, Core.t, [{ event, any, report }]) :: :ok
+  def write_raw_log(device, process \\ Core.get_name(), raw_log)
 
 
   def write_raw_log(device, process, []) do
-     header = "** Base.Debug #{Base.format(process)} event log is empty\n"
+     header = "** Core.Debug #{Core.format(process)} event log is empty\n"
     IO.puts(device, header)
   end
 
   def write_raw_log(device, process, raw_log) do
     formatted_log = format_raw_log(raw_log)
-    header = "** Base.Debug #{Base.format(process)} event log:\n"
+    header = "** Core.Debug #{Core.format(process)} event log:\n"
     IO.puts(device, [header | formatted_log])
   end
 
@@ -287,15 +287,15 @@ defmodule Base.Debug do
   end
 
   @doc false
-  def write_stats(device, process \\ Base.get_name(), stats)
+  def write_stats(device, process \\ Core.get_name(), stats)
 
   def write_stats(device, process, nil) do
-    header = "** Base.Debug #{Base.format(process)} statistics not active\n"
+    header = "** Core.Debug #{Core.format(process)} statistics not active\n"
     IO.puts(device, header)
   end
 
   def write_stats(device, process, stats) do
-    header = "** Base.Debug #{Base.format(process)} statistics:\n"
+    header = "** Core.Debug #{Core.format(process)} statistics:\n"
     formatted_stats = format_stats(stats)
     IO.puts(device, [header | formatted_stats])
   end
