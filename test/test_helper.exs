@@ -11,7 +11,7 @@ defmodule TestIO do
 
   def setup() do
     stdio = Process.group_leader()
-    { :ok, stringio } = StringIO.start_link(<<>>)
+    { :ok, stringio } = StringIO.open(<<>>)
     Process.group_leader(self(), stringio)
     { :ok, [{ :stdio, stdio }, { StringIO, stringio }] }
   end
@@ -32,7 +32,7 @@ defmodule TestIO do
     # sync with :error_logger so that everything sent by current process has
     # been written. Also checks handler is alive and writing to StringIO.
     :pong = :gen_event.call(:error_logger, TestIO, :ping, 5000)
-    { input, output } = StringIO.peek(Process.group_leader())
+    { input, output } = StringIO.contents(Process.group_leader())
     << input :: binary, output :: binary >>
   end
 

@@ -439,14 +439,14 @@ defmodule Core.Debug do
   # one, rather than many seperate writes. With seperate writes the events
   # could be interwoven with other writes to the device.
   defp format_raw_log(raw_log) do
-    { :ok, device } = StringIO.start_link(<<>>)
+    { :ok, device } = StringIO.open(<<>>)
     try do
       format_raw_log(raw_log, device)
     else
       formatted_log ->
         formatted_log
     after
-      StringIO.stop(device)
+      StringIO.close(device)
     end
   end
 
@@ -454,7 +454,7 @@ defmodule Core.Debug do
     _ = lc { event, state, print } inlist raw_log do
       print.(device, event, state)
     end
-    { input, output } = StringIO.peek(device)
+    { input, output } = StringIO.contents(device)
     [input | output]
   end
 
