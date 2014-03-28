@@ -24,7 +24,8 @@ defmodule Base.Debug do
 
         @spec start_link() :: { :ok, pid }
         def start_link() do
-          Base.start_link(nil, __MODULE__, nil, [{ :debug, [:log, :stats] }])
+          Base.start_link(nil, __MODULE__, nil,
+            [{ :debug, [{ :log, 10 }, { :stats, true }] }])
         end
 
         def init(_parent, debug, nil) do
@@ -68,11 +69,13 @@ defmodule Base.Debug do
   @type event :: any
   @type hook_state :: any
   @type hook ::
-    ((proc_state :: any, event, hook_state) -> :done | hook_state )
-  @type option :: :trace | :log | { :log, pos_integer } | :statistics | :stats |
-    { :log_to_file, Path.t } | { :install, { hook, hook_state } }
+    ((hook_state, event, process_term :: any) -> :done | hook_state )
+  @type option :: { :trace, boolean } | { :log, non_neg_integer } |
+    { :stats, boolean } | { :log_file, Path.t | nil } |
+    { :hook, { hook, hook_state | nil } }
   @type t :: [:sys.dbg_opt]
   @type stats :: map
+  @typep report :: ((IO.device, report, any) -> any)
 
   ## macros
 
@@ -114,7 +117,7 @@ defmodule Base.Debug do
   """
   @spec new([option]) :: t
   def new(opts \\ get_opts()) do
-    Enum.map(opts, &map_option/1)
+    parse_options(opts)
       |> :sys.debug_options()
   end
 
@@ -158,32 +161,27 @@ defmodule Base.Debug do
 
   @doc """
   Returns a list of stored events in order.
-  Returns nil if logging is disabled.
 
   Should only be used by the process that created the debug object.
   """
-  @spec get_log(t) :: [event] | nil
+  @spec get_log(t) :: [event]
   def get_log(debug) do
-    case :sys.get_debug(:log, debug, nil) do
-      nil ->
-        nil
-      { _size, raw_log } ->
-        Enum.reduce(raw_log, [], &get_log/2)
-    end
+    get_raw_log(debug)
+      |> log_from_raw()
   end
 
   @doc """
-  Prints logged events to the device (defaults to :stdio) if logging is enabled.
+  Prints logged events to the device (defaults to :stdio).
 
   Should only be used by the process that created the debug object.
   """
   @spec print_log(t, IO.device) :: :ok
   def print_log(debug, device \\ :stdio) do
-    case :sys.get_debug(:log, debug, nil) do
-      nil ->
-        :ok
-      { _size, raw_log } ->
-        write_raw_log(device, Enum.reverse(raw_log))
+    case get_raw_log(debug) do
+      [] ->
+        write_raw_log(device, [])
+      raw_log ->
+        write_raw_log(device, raw_log)
     end
   end
 
@@ -197,40 +195,178 @@ defmodule Base.Debug do
   """
   @spec get_stats(t) :: stats | nil
   def get_stats(debug) do
-   case :sys.get_debug(:statistics, debug, nil) do
-     { start_time, { :reductions, start_reductions }, msg_in, msg_out } ->
-       current_time = :erlang.localtime()
-       { :reductions, current_reductions } = Process.info(self(), :reductions)
-       reductions = current_reductions - start_reductions
-       %{ start_time: start_time, current_time: current_time,
-          reductions: reductions, in: msg_in, out: msg_out }
-     nil ->
-       nil
-   end
+    case get_raw_stats(debug) do
+      :no_statistics ->
+        nil
+      raw_stats ->
+        stats_from_raw(raw_stats)
+    end
   end
 
   @doc """
-  Prints statistics to the device (defaults to :stdio) if statistics are
-  enabled.
+  Prints statistics to the device (defaults to :stdio).
 
   Should only be used by the process that created the debug object.
   """
   @spec print_stats(t, IO.device) :: :ok
   def print_stats(debug, device \\ :stdio) do
-    case get_stats(debug) do
-      nil ->
-        :ok
-      stats ->
-        write_stats(device, stats)
+    stats = get_stats(debug)
+    write_stats(device, stats)
+  end
+
+  @doc """
+  Prints statistics and logs (if active) to the device (defaults to :stdio).
+
+  Should only be used by the process that created the debug object
+  """
+  @spec print(t, IO.device) :: :ok
+  def print(debug, device \\ :stdio) do
+    maybe_print_stats(debug, device)
+    maybe_print_log(debug, device)
+  end
+
+  @doc false
+  @spec get_raw_log(t) :: [{ event, any, report}]
+  # return value used in get_status calls
+  def get_raw_log(debug) do
+    case :sys.get_debug(:log, debug, []) do
+      [] ->
+        []
+      { _max, rev_raw_log } ->
+        Enum.reverse(rev_raw_log)
     end
+  end
+
+  @doc false
+  @spec log_from_raw([{ event, any, report }]) :: [event]
+  def log_from_raw(raw_log) do
+    Enum.map(raw_log, fn({ event, _state, _report }) -> event end)
+  end
+
+  @doc false
+  @spec write_raw_log(IO.device, Base.t, [{ event, any, report }]) :: :ok
+  def write_raw_log(device, process \\ Base.get_name(), raw_log)
+
+
+  def write_raw_log(device, process, []) do
+     header = "** Base.Debug #{Base.format(process)} event log is empty\n"
+    IO.puts(device, header)
+  end
+
+  def write_raw_log(device, process, raw_log) do
+    formatted_log = format_raw_log(raw_log)
+    header = "** Base.Debug #{Base.format(process)} event log:\n"
+    IO.puts(device, [header | formatted_log])
+  end
+
+  @doc false
+  def get_raw_stats(debug) do
+    case :sys.get_debug(:statistics, debug, :no_statistics) do
+      :no_statistics ->
+        :no_statistics
+      { start_time, { :reductions, start_reductions }, msg_in, msg_out } ->
+        current_time = :erlang.localtime()
+        { :reductions, current_reductions } = Process.info(self(), :reductions)
+        reductions = current_reductions - start_reductions
+        [start_time: start_time, current_time: current_time,
+          reductions: reductions, messages_in: msg_in, messages_out: msg_out]
+    end
+  end
+
+  @doc false
+  @spec stats_from_raw(:no_statistics | [{ atom, any}]) :: stats | nil
+  def stats_from_raw(:no_statistics), do: nil
+
+  def stats_from_raw(raw_stats) do
+    stats = Map.new(raw_stats)
+    # rename messages_in/out for convenience
+    { msg_in, stats } = Map.pop(stats, :messages_in)
+    { msg_out, stats } = Map.pop(stats, :messages_out)
+    Map.put(stats, :in, msg_in)
+      |> Map.put(:out, msg_out)
+  end
+
+  @doc false
+  def write_stats(device, process \\ Base.get_name(), stats)
+
+  def write_stats(device, process, nil) do
+    header = "** Base.Debug #{Base.format(process)} statistics not active\n"
+    IO.puts(device, header)
+  end
+
+  def write_stats(device, process, stats) do
+    header = "** Base.Debug #{Base.format(process)} statistics:\n"
+    formatted_stats = format_stats(stats)
+    IO.puts(device, [header | formatted_stats])
   end
 
   ## internal
 
   ## options
 
-  defp map_option(:stats), do: :statistics
-  defp map_option(option), do: option
+  defp parse_options([]), do: []
+
+  defp parse_options(opts) do
+    parse_trace([], opts)
+      |> parse_log(opts)
+      |> parse_stats(opts)
+      |> parse_log_file(opts)
+      |> parse_hooks(opts)
+  end
+
+  defp parse_trace(acc, opts) do
+    case Keyword.get(opts, :trace, false) do
+      true ->
+        [:trace | acc]
+      false ->
+        acc
+    end
+  end
+
+  defp parse_log(acc, opts) do
+    case Keyword.get(opts, :log, 0) do
+      0 ->
+        acc
+      max when is_integer(max) and max > 0 ->
+        [{ :log, max } | acc]
+    end
+  end
+
+  defp parse_stats(acc, opts) do
+    case Keyword.get(opts, :stats, false) do
+      true ->
+        [:statistics | acc]
+      false ->
+        acc
+    end
+  end
+
+  defp parse_log_file(acc, opts) do
+    case Keyword.get(opts, :log_file, nil) do
+      nil ->
+        acc
+      path ->
+        [ { :log_to_file, path } | acc ]
+    end
+  end
+
+  defp parse_hooks(acc, opts) do
+    Keyword.get_values(opts, :hook)
+      |> Enum.reduce([], &add_hook/2)
+      |> Enum.reduce(acc, &hook_options/2)
+  end
+
+  defp add_hook({hook, hook_state}, acc) when is_function(hook, 3) do
+    case List.keymember?(acc, hook, 0) do
+      true ->
+        acc
+      false ->
+        [{ hook, hook_state } | acc]
+    end
+  end
+
+  defp hook_options({ _hook, nil }, acc), do: acc
+  defp hook_options(other, acc), do: [{ :install, other} | acc]
 
   defp set_default_options() do
     options = :application.get_env(:base, :options, [])
@@ -299,19 +435,6 @@ defmodule Base.Debug do
 
   ## log
 
-  defp get_log({ event, _state, _report }, acc), do: [event|acc]
-
-  defp write_raw_log(device, []) do
-     header = "** Base.Debug #{Base.format()} event log is empty\n"
-    IO.puts(device, header)
-  end
-
-  defp write_raw_log(device, raw_log) do
-    formatted_log = format_raw_log(raw_log)
-    header = "** Base.Debug #{Base.format()} event log:\n"
-    IO.puts(device, [header | formatted_log])
-  end
-
   # Collect log into a single binary so that it is written to the device in
   # one, rather than many seperate writes. With seperate writes the events
   # could be interwoven with other writes to the device.
@@ -337,12 +460,6 @@ defmodule Base.Debug do
 
   ## stats
 
-  defp write_stats(device, stats) do
-    header = "** Base.Debug #{Base.format()} statistics:\n"
-    formatted_stats = format_stats(stats)
-    IO.puts(device, [header | formatted_stats])
-  end
-
   defp format_stats(%{ start_time: start_time, current_time: current_time,
     reductions: reductions, in: msg_in, out: msg_out }) do
     ["   Start Time: #{format_time(start_time)}\n",
@@ -357,6 +474,26 @@ defmodule Base.Debug do
     args = [year, month, day, hour, min, sec]
     :io_lib.format(format, args)
       |> iolist_to_binary()
+  end
+
+  ## print
+
+  defp maybe_print_stats(debug, device) do
+    case get_stats(debug) do
+      nil ->
+        :ok
+      stats ->
+        write_stats(device, stats)
+    end
+  end
+
+  defp maybe_print_log(debug, device) do
+    case :sys.get_debug(:log, debug, nil) do
+      nil ->
+        :ok
+      { _max, raw_log } ->
+        write_raw_log(device, Enum.reverse(raw_log))
+    end
   end
 
 end

@@ -41,7 +41,14 @@ defmodule TestIO do
   end
 
   def handle_event({ :error, device, { _pid, format, data } }, state) do
-    :io.format(device, format ++ '~n', data)
+    try do
+      :io.format(device, format ++ '~n', data)
+    catch
+      # device can receive exit signal from parent causing it to exit
+      # before replying.
+      :error, :terminated ->
+        :ok
+    end
     { :ok, state }
   end
 
@@ -58,6 +65,76 @@ defmodule TestIO do
   end
 
   def terminate(_reason, _state) do
+    :ok
+  end
+
+end
+
+defmodule GS do
+
+  use GenServer.Behaviour
+
+  def start_link(fun, debug_opts \\ []) do
+    :gen_server.start_link(__MODULE__, fun, [{ :debug, debug_opts }])
+  end
+
+  def init(fun), do: fun.()
+
+  def code_change(_oldvsn, _oldfun, newfun), do: newfun.()
+
+end
+
+defmodule GE do
+
+  use GenEvent.Behaviour
+
+  def start_link(fun) do
+    { :ok, pid } = :gen_event.start_link()
+    :ok = :gen_event.add_handler(pid, __MODULE__, fun)
+    { :ok, pid }
+  end
+
+  def init(fun), do: fun.()
+
+  def code_change(_oldvsn, _oldfun, newfun), do: newfun.()
+
+end
+
+defmodule GFSM do
+
+  @behaviour :gen_fsm
+
+  def start_link(fun, debug_opts \\ []) do
+    :gen_fsm.start_link(__MODULE__, fun, [{ :debug, debug_opts }])
+  end
+
+  def init(fun), do: fun.()
+
+  def state(_event, fun) do
+    { :next_state, :state, fun }
+  end
+
+  def state(_event, _from, fun) do
+    { :next_state, :state, fun }
+  end
+
+  def handle_event(_evemt, :state, fun) do
+    { :next_state, :state, fun }
+  end
+
+  def handle_sync_event(_event, _from, :state, fun) do
+    { :next_state, :state, fun }
+  end
+
+  def handle_info(_info, :state, fun) do
+    { :next_state, :state, fun }
+  end
+
+  def code_change(_oldvsn, :state, _oldfun, extra) do
+    extra.()
+  end
+
+  def terminate(_reason, :state, _fun) do
     :ok
   end
 

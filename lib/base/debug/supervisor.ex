@@ -1,4 +1,6 @@
 defmodule Base.Debug.Supervisor do
+  @moduledoc false
+
   use Supervisor.Behaviour
 
   ## api

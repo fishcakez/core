@@ -319,7 +319,7 @@ defmodule Base do
     if starter === self() and type === :abnormal do
       report_init_stop(mod, parent, args, reason, event)
     end
-    if type === :abnormal, do: print_debug(debug)
+    if type === :abnormal, do: Base.Debug.print(debug)
     unregister()
     if starter !== self(), do: :proc_lib.init_ack(starter, { :error, reason })
     exit(reason)
@@ -348,7 +348,7 @@ defmodule Base do
     type = exit_type(reason)
     if type === :abnormal do
       report_stop(mod, state, parent, reason, event)
-      print_debug(debug)
+      Base.Debug.print(debug)
     end
     exit(reason)
   end
@@ -664,11 +664,6 @@ defmodule Base do
   defp unregister(name) when is_atom(name), do: Process.unregister(name)
   defp unregister({ :global, name }), do: :global.unregister_name(name)
   defp unregister({ :via, mod, name }), do: mod.unregister_name(name)
-
-  defp print_debug(debug) do
-    Base.Debug.print_log(debug)
-    Base.Debug.print_stats(debug)
-  end
 
   defp base_stop(mod, parent, reason) do
     report_base_stop(mod, parent, reason)

@@ -313,7 +313,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :init_error
     Process.flag(:trap_exit, trap)
@@ -342,7 +342,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :normal
     Process.flag(:trap_exit, trap)
@@ -359,7 +359,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :shutdown
     Process.flag(:trap_exit, trap)
@@ -376,7 +376,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === { :shutdown, nil }
     Process.flag(:trap_exit, trap)
@@ -535,7 +535,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :error
     Process.flag(:trap_exit, trap)
@@ -564,7 +564,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :normal
     Process.flag(:trap_exit, trap)
@@ -581,7 +581,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :shutdown
     Process.flag(:trap_exit, trap)
@@ -598,7 +598,7 @@ defmodule BaseTest do
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Base.spawn_link(nil, BaseTest, fun,
-      [{ :debug, [:log] }])
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === { :shutdown, nil }
     Process.flag(:trap_exit, trap)
