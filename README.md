@@ -21,7 +21,7 @@ defmodule HelloWorld do
 
   use Core.Behaviour
 
-  def start_link(), do: start_link(__MODULE__, nil)
+  def start_link(), do: Core.start_link(__MODULE__, nil)
 
   def init(_parent, _debug, _args) do
     IO.puts("Hello World")
