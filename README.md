@@ -46,7 +46,7 @@ end
 
 # Call a :gen\_server registered as :server
 ```elixir
-Core.call(:$gen_call, :server, request, timeout)
+Core.call(:"$gen_call", :server, request, timeout)
 ```
 If `:server` does not exist:
 ```
@@ -71,7 +71,7 @@ defmodule PingPong do
 
   @spec start_link() :: { :ok, pid }
   def start_link() do
-    Core.start_link(__MODULE__, nil,)
+    Core.start_link(__MODULE__, nil)
   end
 
   # Core api
