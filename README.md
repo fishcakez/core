@@ -10,7 +10,7 @@ behave idenitically with `:sys` until 17.0 final is released.
 # Installing
 ```
 git clone https://github.com/fishcakez/core.git
-cd base
+cd core
 mix do deps.get, docs, compile
 ```
 
