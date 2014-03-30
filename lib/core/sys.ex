@@ -305,12 +305,12 @@ defmodule Core.Sys do
     rescue
       exception ->
         reason = { exception, System.stacktrace() }
-        system_terminate(parent, [], [mod | data], reason)
+        system_terminate(reason, parent, [], [mod | data])
     end
   end
 
   @doc false
-  def system_terminate(parent, _debug, [mod | data], reason) do
+  def system_terminate(reason, parent, _debug, [mod | data]) do
     continue(mod, :system_terminate, data, parent, [reason])
   end
 

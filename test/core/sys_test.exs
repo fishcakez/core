@@ -32,8 +32,8 @@ defmodule Core.SysTest do
 
   def system_continue(fun, parent), do: loop(fun, parent)
 
-  def system_terminate(fun, _parent, _reason) do
-    fun.()
+  def system_terminate(_fun, _parent, reason) do
+    exit(reason)
   end
 
   setup_all do
@@ -694,6 +694,20 @@ defmodule Core.SysTest do
     assert close(pid) === :ok
     assert TestIO.binread() === <<>>
   end
+
+  test "parent exit" do
+    ref = make_ref()
+    fun = fn() -> Process.flag(:trap_exit, true) ; ref end
+    pid = Core.spawn_link(__MODULE__, fun)
+    assert Core.call(pid, __MODULE__, :eval, 500) === ref, "trap_exit not set"
+    trap = Process.flag(:trap_exit, true)
+    Process.exit(pid, :exit_reason)
+    assert_receive { :EXIT, ^pid, reason }, 100, "process did not exit"
+    assert reason === :exit_reason
+    Process.flag(:trap_exit, trap)
+    assert TestIO.binread() === <<>>
+  end
+
 
   ## utils
 
