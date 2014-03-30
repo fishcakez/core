@@ -23,7 +23,7 @@ defmodule HelloWorld do
 
   def start_link(), do: Core.start_link(__MODULE__, nil)
 
-  def init(_parent, _debug, _args) do
+  def init(_parent, _args) do
     IO.puts("Hello World")
     # Core.init_ack/0 will cause start_link/0 to return { :ok, self() }. If this
     # function is never called start_link will block until this process exits.
