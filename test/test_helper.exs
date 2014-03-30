@@ -74,8 +74,8 @@ defmodule GS do
 
   use GenServer.Behaviour
 
-  def start_link(fun, debug_opts \\ []) do
-    :gen_server.start_link(__MODULE__, fun, [{ :debug, debug_opts }])
+  def start_link(fun) do
+    :gen_server.start_link(__MODULE__, fun, [])
   end
 
   def init(fun), do: fun.()
@@ -104,8 +104,8 @@ defmodule GFSM do
 
   @behaviour :gen_fsm
 
-  def start_link(fun, debug_opts \\ []) do
-    :gen_fsm.start_link(__MODULE__, fun, [{ :debug, debug_opts }])
+  def start_link(fun) do
+    :gen_fsm.start_link(__MODULE__, fun, [])
   end
 
   def init(fun), do: fun.()
