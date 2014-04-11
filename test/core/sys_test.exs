@@ -36,7 +36,7 @@ defmodule Core.SysTest do
 
   def system_continue(fun, parent, debug), do: loop(fun, parent, debug)
 
-  def system_terminate(_fun, _parent, debug, reason) do
+  def system_terminate(_fun, _parent, _debug, reason) do
     exit(reason)
   end
 
