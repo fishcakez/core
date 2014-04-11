@@ -9,7 +9,8 @@ defmodule Core.Mixfile do
   end
 
   def application do
-    [ applications: [] ]
+    [ applications: [],
+      mod: { Core.App, [] }]
   end
 
   defp deps(:prod) do

@@ -26,14 +26,14 @@ defmodule Core.Sys do
   Called when the process should re-enter it's loop after handling
   system messages.
   """
-  defcallback system_continue(data, Core.parent) :: no_return
+  defcallback system_continue(data, Core.parent, Core.Debug.t) :: no_return
 
   @doc """
   Called when the process should terminate after handling system
   messages, i.e. an exit signal was received from the parent process
   when the current process is trapping exits.
   """
-  defcallback system_terminate(data, Core.parent, any) ::
+  defcallback system_terminate(data, Core.parent, Core.Debug.t, any) ::
     no_return
 
   ## types
@@ -102,14 +102,14 @@ defmodule Core.Sys do
   @doc """
   Macro to handle system messages but not receive any other messages.
 
-  `mod.system_continue/2` or `mod.system_terminate/3` will return
+  `mod.system_continue/3` or `mod.system_terminate/4` will return
   control of the process to `mod` after handling system messages.
 
   Should only be used as a tail call as it has no local return.
   """
-  defmacro receive(mod, data, parent) do
+  defmacro receive(mod, data, parent, debug) do
     parent_quote = quote do: parent_var
-    extra = transform_receive(mod, data, parent_quote)
+    extra = transform_receive(mod, data, parent_quote, debug)
     quote do
       parent_var = unquote(parent)
       receive do: unquote(extra)
@@ -119,7 +119,7 @@ defmodule Core.Sys do
   @doc """
   Macro to handle system messages and receive messages.
 
-  `mod.system_continue/2` or `mod.system_terminate/3` will return
+  `mod.system_continue/3` or `mod.system_terminate/4` will return
   control of the process to `mod` after handling system messages.
 
   Should only be used as a tail call as it has no local return.
@@ -128,42 +128,43 @@ defmodule Core.Sys do
 
       use Core.Sys.Behaviour
 
-      defp loop(data, parent) do
-        Core.Sys.receive(__MODULE__, data, parent) do
+      defp loop(data, parent, debug) do
+        Core.Sys.receive(__MODULE__, data, parent, debug) do
           msg ->
             IO.puts(:stdio, inspect(msg))
-            loop(data, parent)
+            loop(data, parent, debug)
         after
           1000 ->
-            terminate(data, parent, timeout)
+            terminate(data, parent, debug, timeout)
         end
       end
 
-      def system_continue(data, parent) do
-        loop(data, parent)
+      def system_continue(data, parent, debug) do
+        loop(data, parent, debug)
       end
 
-      def system_terminate(data, parent,, reason) do
-        terminate(data, parent, reason)
+      def system_terminate(_data, _parent, _debug, reason) do
+        terminate(reason)
       end
 
-      defp terminate(data, parent, reason) do
-        exit(reason)
+      defp terminate(reason) do
+        exit(reaosn)
       end
 
   """
-  defmacro receive(mod, data, parent, do: do_clauses) do
+  defmacro receive(mod, data, parent, debug, do: do_clauses) do
     parent_quote = quote do: parent_var
-    extra = transform_receive(mod, data, parent_quote)
+    extra = transform_receive(mod, data, parent_quote, debug)
     quote do
       parent_var = unquote(parent)
       receive do: unquote(extra ++ do_clauses)
     end
   end
 
-  defmacro receive(mod, data, parent, do: do_clauses, after: after_clause) do
+  defmacro receive(mod, data, parent, debug, do: do_clauses,
+      after: after_clause) do
     parent_quote = quote do: parent_var
-    extra = transform_receive(mod, data, parent_quote)
+    extra = transform_receive(mod, data, parent_quote, debug)
     quote do
       parent_var = unquote(parent)
       receive do: unquote(extra ++ do_clauses), after: unquote(after_clause)
@@ -172,7 +173,7 @@ defmodule Core.Sys do
 
   defmacrop default_timeout(), do: 5000
 
-  ## system api
+  ## debug api
 
   @doc """
   Pings an OTP process to see if it is responsive to system messages.
@@ -270,43 +271,138 @@ defmodule Core.Sys do
     end
   end
 
+  @doc """
+  Returns any logged events created by an OTP process.
+
+  The oldest event is at the head of the list.
+  """
+  @spec get_log(Core.t, timeout) :: [Core.Debug.event]
+  def get_log(process, timeout \\ default_timeout()) do
+    debug_call(process, { :log, :get }, timeout)
+      |> Core.Debug.log_from_raw()
+  end
+
+  @doc """
+  Prints any logged events created by an OTP process to `:stdio`.
+  """
+  @spec print_log(Core.t, timeout) :: :ok
+  def print_log(process, timeout \\ default_timeout()) do
+    raw_log = debug_call(process, { :log, :get }, timeout)
+    Core.Debug.write_raw_log(:stdio, process, raw_log)
+  end
+
+  @doc """
+  Sets the number of logged events to store for an OTP process.
+  """
+  @spec set_log(Core.t, non_neg_integer | boolean, timeout) :: :ok
+  def set_log(process, max, timeout \\ default_timeout())
+
+  def set_log(process, 0, timeout) do
+    debug_call(process, { :log, false }, timeout)
+  end
+
+  def set_log(process, max, timeout) when is_integer(max) and max > 0 do
+    debug_call(process, { :log, { :true, max  }}, timeout)
+  end
+
+  @doc """
+  Set the file to log events to for an OTP process.
+  `nil` will turn off logging events to file.
+  """
+  @spec set_log_file(Core.t, Path.t | nil, timeout) :: :ok
+  def set_log_file(process, path, timeout \\ default_timeout())
+
+  def set_log_file(process, nil, timeout) do
+    debug_call(process, { :log_to_file, false }, timeout)
+  end
+
+  def set_log_file(process, path, timeout) do
+    case debug_call(process, { :log_to_file, path }, timeout) do
+      :ok ->
+        :ok
+      { :error, :open_file } ->
+        raise ArgumentError, message: "could not open file: #{inspect(path)}"
+    end
+  end
+
+  @doc """
+  Returns stats about an OTP process if it is collecting statistics.
+  Otherwise returns `nil`.
+  """
+  @spec get_stats(Core.t, timeout) :: Core.Debug.stats | nil
+  def get_stats(process, timeout \\ default_timeout()) do
+    debug_call(process, { :statistics, :get }, timeout)
+      |> Core.Debug.stats_from_raw()
+  end
+
+  @doc """
+  Prints statistics collected by an OTP process to `:stdio`.
+  """
+  @spec print_stats(Core.t, timeout) :: :ok
+  def print_stats(process, timeout \\ default_timeout()) do
+    stats = get_stats(process, timeout)
+    Core.Debug.write_stats(:stdio, process, stats)
+  end
+
+  @doc """
+  Sets whether an OTP process collects statistics or not.
+  `true` will collect statistics.
+  `false` will not collect statistics.
+  """
+  @spec set_stats(Core.t, boolean, timeout) :: :ok
+  def set_stats(process, flag, timeout \\ default_timeout())
+      when is_boolean(flag) do
+    debug_call(process, { :statistics, flag }, timeout)
+  end
+
+  @doc """
+  Sets whether an OTP process should print events to `:stdio` as they occur.
+  `true` will print events.
+  `false` will not print events.
+  """
+  @spec set_trace(Core.t, boolean, timeout) :: :ok
+  def set_trace(process, flag, timeout \\ default_timeout())
+      when is_boolean(flag) do
+    debug_call(process, { :trace, flag }, timeout)
+  end
+
+  @doc """
+  Sets a hook to act on events for an OTP process.
+  Setting the hook state to `nil` will remove the hook.
+  """
+  @spec set_hook(Core.t, Core.Debug.hook, Core.Debug.hook_state | nil,
+      timeout) :: :ok
+  def set_hook(process, hook, state, timeout \\ default_timeout())
+
+  def set_hook(process, hook, nil, timeout) when is_function(hook, 3) do
+    debug_call(process, { :remove, hook }, timeout)
+  end
+
+  def set_hook(process, hook, state, timeout) when is_function(hook, 3) do
+    debug_call(process, { :install, { hook, state } }, timeout)
+  end
+
   ## receive macro api
 
   @doc false
-  @spec message(__MODULE__, data, Core.parent, any, Core.from) ::
+  @spec message(__MODULE__, data, Core.parent, Core.Debug.t, any, Core.from) ::
     no_return
-  def message(mod, data, parent, :get_state, from) do
-    handle_get_state([mod | data], parent, from)
+  def message(mod, data, parent, debug, :get_state, from) do
+    handle_get_state([mod | data], parent, debug, from)
   end
 
-  def message(mod, data, parent, { :replace_state, replace}, from) do
-    handle_replace_state([mod | data], parent, replace, from)
+  def message(mod, data, parent, debug, { :replace_state, replace}, from) do
+    handle_replace_state([mod | data], parent, debug, replace, from)
   end
 
-  def message(mod, data, parent, msg, from) do
-    :sys.handle_system_msg(msg, from, parent, __MODULE__, [], [mod | data])
+  def message(mod, data, parent, debug, msg, from) do
+    :sys.handle_system_msg(msg, from, parent, __MODULE__, debug, [mod | data])
   end
 
   ## :sys api
 
-  @doc false
-  def system_continue(parent, [], [mod | data]) do
-    continue(mod, :system_continue, data, parent)
-  end
-
-  def system_continue(parent, _debug, [mod | data]) do
-    # debug is not supported and debug options have been added. Exit as
-    # will forget these options. Generate suitable exception/stacktrace.
-    try do
-      exception = FunctionClauseError[module: __MODULE__,
-        function: :sytem_continue, arity: 3]
-      raise Core.Sys.CallbackError,
-        [action: &__MODULE__.system_continue/3, reason: exception]
-    rescue
-      exception ->
-        reason = { exception, System.stacktrace() }
-        system_terminate(reason, parent, [], [mod | data])
-    end
+  def system_continue(parent, debug, [mod | data]) do
+    continue(mod, :system_continue, data, parent, debug)
   end
 
   @doc false
@@ -369,9 +465,8 @@ defmodule Core.Sys do
   end
 
   @doc false
-  def format_status(_type,
-      [_pdict, sys_status, parent, _debug, [mod | data]]) do
-    base_status = format_base_status(sys_status, parent, mod)
+  def format_status(_type, [_pdict, sys_status, parent, debug, [mod | data]]) do
+    base_status = format_base_status(sys_status, parent, mod, debug)
     try do
       mod.system_get_data(data)
     else
@@ -433,13 +528,14 @@ defmodule Core.Sys do
 
   ## receive
 
-  defp transform_receive(mod, data, parent) do
+  defp transform_receive(mod, data, parent, debug) do
     quote do
       { :EXIT, ^unquote(parent), reason } ->
-        unquote(mod).system_terminate(unquote(data), unquote(parent), reason)
+        unquote(mod).system_terminate(unquote(data), unquote(parent),
+          unquote(debug), reason)
       { :system, from, msg } ->
-        Core.Sys.message(unquote(mod), unquote(data), unquote(parent), msg,
-          from)
+        Core.Sys.message(unquote(mod), unquote(data), unquote(parent),
+          unquote(debug), msg, from)
     end
   end
 
@@ -476,6 +572,17 @@ defmodule Core.Sys do
         raise Core.Sys.CallbackError, action: action, reason: { :EXIT, reason }
       state ->
         state
+    end
+  end
+
+  defp debug_call(process, request, timeout) do
+    case call(process, { :debug, request }, timeout) do
+      :ok ->
+        :ok
+      { :ok, result } ->
+        result
+      { :error, _reason } = error ->
+        error
     end
   end
 
@@ -516,10 +623,27 @@ defmodule Core.Sys do
 
   defp parse_status_data(pid, mod, pdict, sys_status, parent, status_data) do
     name = get(status_data, 'Name', pid)
+    log = parse_status_log(status_data)
+    stats = parse_status_stats(status_data)
     mod2 = get(status_data, 'Module', mod)
     mod_data = get_mod_data(mod, status_data)
-    %{ name: name, module: mod2, data: mod_data, pid: pid, dictionary: pdict,
-      sys_status: sys_status, parent: parent }
+    %{ name: name, log: log, stats: stats, module: mod2, data: mod_data,
+       pid: pid, dictionary: pdict, sys_status: sys_status, parent: parent }
+  end
+
+  defp parse_status_log(status_data) do
+    case get(status_data, 'Logged events', []) do
+      [] ->
+        []
+      { _max, rev_raw_log } ->
+        Enum.reverse(rev_raw_log)
+          |> Core.Debug.log_from_raw()
+    end
+  end
+
+  defp parse_status_stats(status_data) do
+    get(status_data, 'Statistics', :no_statistics)
+      |> Core.Debug.stats_from_raw()
   end
 
   defp get_mod_data(__MODULE__, status_data) do
@@ -543,44 +667,66 @@ defmodule Core.Sys do
   end
 
   # Mimic handling of 17.0. Once 17.0 is out this function will disappear.
-  defp handle_get_state([mod | data], parent, from) do
+  defp handle_get_state([mod | data], parent, debug, from) do
     try do
       system_get_state([mod | data])
     else
       { :ok, _state } = response ->
         Core.reply(from, response)
-        system_continue(parent, [], [mod | data])
+        system_continue(parent, debug, [mod | data])
     catch
       class, reason ->
         action = { __MODULE__, :get_state }
         reason2 = { :callback_failed, action, { class, reason } }
         Core.reply(from, { :error, reason2 })
-        system_continue(parent, [], [mod | data])
+        system_continue(parent, debug, [mod | data])
     end
   end
 
   # Mimic handling of 17.0. Once 17.0 is out this function will disappear.
-  defp handle_replace_state([mod | data], parent, replace, from) do
+  defp handle_replace_state([mod | data], parent, debug, replace, from) do
     try do
       { :ok, _state, _mod_data } = system_replace_state(replace, [mod | data])
     else
       { :ok, state, [mod | data] } ->
         Core.reply(from, { :ok, state })
-        system_continue(parent, [], [mod | data])
+        system_continue(parent, debug, [mod | data])
     catch
       class, reason ->
         action = { __MODULE__, :replace_state }
         reason2 = { :callback_failed, action, { class, reason } }
         Core.reply(from, { :error, reason2 })
-        system_continue(parent, [], [mod | data])
+        system_continue(parent, debug, [mod | data])
     end
   end
 
-  defp format_base_status(sys_status, parent, mod) do
+  defp format_base_status(sys_status, parent, mod, debug) do
     header = String.to_char_list!("Status for #{inspect(mod)} #{Core.format()}")
+    log = get_status_log(debug)
+    stats = get_status_stats(debug)
     data = [{ 'Status', sys_status }, { 'Parent', parent },
-      { 'Name', Core.get_name() }, { 'Module', mod }]
+      { 'Name', Core.get_name() }, { 'Logged events', log },
+      { 'Statistics', stats }, { 'Module', mod }]
     [{ :header, header }, { :data, data }]
+  end
+
+  defp get_status_log(debug) do
+    try do
+      # How gen_* returns format_status log
+      :sys.get_debug(:log, debug, [])
+    rescue
+      _exception ->
+        []
+    end
+  end
+
+  defp get_status_stats(debug) do
+    try do
+      Core.Debug.get_raw_stats(debug)
+    rescue
+      _exception ->
+        :no_statistics
+    end
   end
 
   defp format_status_error(base_status, mod_data, exception) do
@@ -601,15 +747,15 @@ defmodule Core.Sys do
       { :error, exception } }
   end
 
-  defp continue(mod, fun, data, parent, args \\ []) do
+  defp continue(mod, fun, data, parent, debug, args \\ []) do
     case Process.info(self(), :catchlevel) do
       # Assume :proc_lib catch but no Core catch due to hibernation.
       { :catchlevel, 1 } ->
         # Use Core to re-add Core catch for logging exceptions.
-        Core.continue(mod, fun, data, parent, args)
+        Core.continue(mod, fun, data, parent, debug, args)
       # Assume :proc_lib catch and Core catch, i.e. no hibernation.
       { :catchlevel, 2 } ->
-        apply(mod, fun, [data, parent] ++ args)
+        apply(mod, fun, [data, parent, debug] ++ args)
       # Either not a Core/:proc_lib process OR
       # Core.Sys.receive/4 macro was used inside a catch.
       { :catchlevel, level } ->
@@ -623,7 +769,8 @@ defmodule Core.Sys do
             # Use Core to add Core catch which may log an exception if one is
             # raised. If we have two levels (or more!) of the Core catch an
             # exception will only be logged once.
-            Core.continue(mod, :system_terminate, data, parent, [reason])
+            Core.continue(mod, :system_terminate, data, parent, debug,
+              [reason])
         end
     end
   end

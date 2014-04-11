@@ -4,8 +4,7 @@ defmodule Core do
 
   This module provides the basic features required for building OTP compliant
   processes. There are a few examples for using these functions to create OTP
-  processes in the documentation for `Core.Behaviour` and
-  `Core.Sys.Behaviour`.
+  processes in the documentation for `Core.Behaviour` and `Core.Debug`.
 
   Many functions in this module are only intended for use in processes initiated
   by functions in this module.
@@ -13,7 +12,7 @@ defmodule Core do
 
   use Behaviour
 
-  defcallback  init(parent, args) :: no_return
+  defcallback  init(parent, Core.Debug.t, args) :: no_return
 
   ## start/spawn types
 
@@ -22,7 +21,8 @@ defmodule Core do
   @type via_name :: { :via, module, any }
   @type name :: nil | local_name | global_name | via_name
   @typep args :: any
-  @type option :: { :timeout, timeout }  | { :spawn, [Process.spawn_opt] }
+  @type option :: { :timeout, timeout } | { :debug, [Core.Debug.option] } |
+    { :spawn, [Process.spawn_opt] }
   @type start_return :: { :ok, pid } | { :ok, pid, any } | :ignore |
     { :error, any }
 
@@ -41,7 +41,6 @@ defmodule Core do
   @typep extra :: any
   @typep reason :: Exception.t | { Exception.t, Exception.stacktrace } | atom |
     { atom, any }
-  @typep event :: any
   @typep state :: any
   @type parent :: pid
 
@@ -162,7 +161,7 @@ defmodule Core do
   def start(name \\ nil, mod, args, opts \\ []) do
     spawn_opts = Keyword.get(opts, :spawn, [])
     timeout = Keyword.get(opts, :timeout, :infinity)
-    init_args = [mod, name, nil, args, self()]
+    init_args = [mod, name, nil, args, self(), opts]
     :proc_lib.start(__MODULE__, :init, init_args, timeout, spawn_opts)
   end
 
@@ -183,7 +182,7 @@ defmodule Core do
   @spec start_link(name, module, args, [option]) :: start_return
   def start_link(name \\ nil, mod, args, opts \\ []) do
     spawn_opts = Keyword.get(opts, :spawn, [])
-    init_args = [mod, name, self(), args, self()]
+    init_args = [mod, name, self(), args, self(), opts]
     timeout = Keyword.get(opts, :timeout, :infinity)
     :proc_lib.start_link(__MODULE__, :init,  init_args, timeout, spawn_opts)
   end
@@ -201,7 +200,7 @@ defmodule Core do
   @spec spawn(name, module, args, [option]) :: pid
   def spawn(name \\ nil, mod, args, opts \\ []) do
     spawn_opts = Keyword.get(opts, :spawn, [])
-    init_args =  [mod, name, nil, args,  nil]
+    init_args =  [mod, name, nil, args,  nil, opts]
     :proc_lib.spawn_opt(__MODULE__, :init, init_args, spawn_opts)
   end
 
@@ -218,7 +217,7 @@ defmodule Core do
   @spec spawn_link(name | nil, module, any, [option]) :: pid
   def spawn_link(name \\ nil, mod, args, opts \\ []) do
     spawn_opts = Keyword.get(opts, :spawn, [])
-    init_args =  [mod, name, self(), args, nil]
+    init_args =  [mod, name, self(), args, nil, opts]
     :proc_lib.spawn_opt(__MODULE__, :init, init_args, [:link | spawn_opts])
   end
 
@@ -293,13 +292,11 @@ defmodule Core do
   This function is an alternative to `init_ack/0` and should be used be signal
   the rason why initiation failed.
 
-  Before sending the acknowledgment the process will send an error
-  report to the error logger when the proess was started with a spawn
-  function and the reason is not `:normal`, `:shutdown` or of the form
-  `{ :shutdown, any }`. log an error with the error logger. If the reason is of
-  the form: `{ exception, stacktrace }`, the error will note that an exception
-  was raised format the exception and stacktrace. Also any name that was
-  associated with the process during initiation will be unregistered.
+  Before sending the acknowledgment the process may print debug information and
+  log an error with the error logger. If the reason is of the form:
+  `{ exception, stacktrace }`, the error will note that an exception was raised
+  format the exception and stacktrace. Also any name that was associated with
+  the process during initiation will be unregistered.
 
   After sending the acknowledgment the process will exit with the reason passed.
   As this function exits it should only be used as a tail call.
@@ -312,14 +309,17 @@ defmodule Core do
 
   This function is only intended for use by processes created by this module.
   """
-  @spec init_stop(module, parent, args, reason, event) :: no_return
-  def init_stop(mod, parent, args, reason, event \\ nil)
+  @spec init_stop(module, parent, Core.Debug.t, args, reason,
+    Core.Debug.event) :: no_return
+  def init_stop(mod, parent, debug, args, reason, event \\ nil)
 
-  def init_stop(mod, parent, args, reason, event) do
+  def init_stop(mod, parent, debug, args, reason, event) do
+    type = exit_type(reason)
     starter = get_starter()
-    if starter === self() and exit_type(reason) === :abnormal do
+    if starter === self() and type === :abnormal do
       report_init_stop(mod, parent, args, reason, event)
     end
+    if type === :abnormal, do: Core.Debug.print(debug)
     unregister()
     if starter !== self(), do: :proc_lib.init_ack(starter, { :error, reason })
     exit(reason)
@@ -328,23 +328,27 @@ defmodule Core do
   @doc """
   Stops a Core process.
 
-  Before exiting the process will send an error report to the error logger when
-  the reason is not `:normal`, `:shutdown` or of the form `{ :shutdown, any }`.
-  If the reason is of the form: `{ exception, stacktrace }`, the error will note
-  that an exception was raised format the exception and stacktrace. A crash
-  report with additional information will also be sent to the error logger.
+  Before exiting the process may print debug information and will send an error
+  report to the error logger when the reason is not `:normal`, `:shutdown` or of
+  the form `{ :shutdown, any }`. If the reason is of the form:
+  `{ exception, stacktrace }`, the error will note that an exception was raised
+  format the exception and stacktrace. A crash report with additional
+  information will also be sent to the error logger.
 
   The process will exit with the reason passed. As this function exits it should
   only be used as a tail call.
 
   This function is only intended for use by processes created by this module.
   """
-  @spec stop(module, state, parent, reason, event) :: no_return
-  def stop(mod, state, parent, reason, event \\ nil)
+  @spec stop(module, state, parent, Core.Debug.t, reason,
+    Core.Debug.event) :: no_return
+  def stop(mod, state, parent, debug, reason, event \\ nil)
 
-  def stop(mod, state, parent, reason, event) do
-    if exit_type(reason) === :abnormal do
+  def stop(mod, state, parent, debug, reason, event) do
+    type = exit_type(reason)
+    if type === :abnormal do
       report_stop(mod, state, parent, reason, event)
+      Core.Debug.print(debug)
     end
     exit(reason)
   end
@@ -486,34 +490,36 @@ defmodule Core do
   This function throws away the stack and should only be used as a tail call.
 
   When the process leaves hibernation the following will be called:
-  `apply(mod, fun, [state, parent] ++ args)`
+  `apply(mod, fun, [state, parent, debug] ++ args)`
 
   This function is only intended for use by processes created by this module.
   """
-  @spec hibernate(module, atom, state, parent, [any]) :: no_return
-  def hibernate(mod, fun, state, parent, args \\ []) do
-    :proc_lib.hibernate(__MODULE__, :continue, [mod, fun, state, parent, args])
+  @spec hibernate(module, atom, state, parent, Core.Debug.t, [any]) :: no_return
+  def hibernate(mod, fun, state, parent, debug, args \\ []) do
+    :proc_lib.hibernate(__MODULE__, :continue,
+      [mod, fun, state, parent, debug, args])
   end
 
   ## :proc_lib api
 
   @doc false
-  @spec init( nil | pid, nil | pid, name, module, args) :: no_return
-  def init(mod, nil, parent, args, starter) do
-    init(mod, self(), parent, args, starter)
+  @spec init( nil | pid, nil | pid, name, module, args, [option]) ::
+    no_return
+  def init(mod, nil, parent, args, starter, opts) do
+    init(mod, self(), parent, args, starter, opts)
   end
 
-  def init(mod, name, nil, args, starter) do
-    init(mod, name, self(), args, starter)
+  def init(mod, name, nil, args, starter, opts) do
+    init(mod, name, self(), args, starter, opts)
   end
 
-  def init(mod, name, parent, args, nil) do
-    init(mod, name, parent, args, self())
+  def init(mod, name, parent, args, nil, opts) do
+    init(mod, name, parent, args, self(), opts)
   end
 
-  def init(mod, name, parent, args, starter) do
+  def init(mod, name, parent, args, starter, opts) do
     try do
-      do_init(mod, name, parent, args, starter)
+      do_init(mod, name, parent, args, starter, opts)
     else
       _ ->
         # Explicitly exit.
@@ -531,10 +537,10 @@ defmodule Core do
   end
 
   @doc false
-  @spec continue(module, atom, state, parent, args) :: no_return
-  def continue(mod, fun, state, parent, args) do
+  @spec continue(module, atom, state, parent, Core.Debug.t, args) :: no_return
+  def continue(mod, fun, state, parent, debug, args) do
     try do
-      apply(mod, fun, [state, parent] ++ args)
+      apply(mod, fun, [state, parent, debug] ++ args)
     else
       _ ->
         # Explicitly exit.
@@ -593,12 +599,13 @@ defmodule Core do
 
   ## init
 
-  defp do_init(mod, name, parent, args, starter) do
+  defp do_init(mod, name, parent, args, starter, opts) do
     case register(name) do
       :yes ->
         put_starter(starter)
         put_name(name)
-        mod.init(parent, args)
+        debug = new_debug(opts)
+        mod.init(parent, debug, args)
       :no when starter === self() ->
         exit(:normal)
       :no ->
@@ -635,6 +642,15 @@ defmodule Core do
   defp put_starter(starter), do: Process.put(:"$starter", starter)
 
   defp get_starter(), do: Process.get(:"$starter", self())
+
+  defp new_debug(opts) do
+    case Keyword.get(opts, :debug, nil) do
+      nil ->
+        Core.Debug.new()
+      debug_opts ->
+        Core.Debug.new(debug_opts)
+    end
+  end
 
   ## stopping
 

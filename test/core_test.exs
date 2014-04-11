@@ -4,13 +4,14 @@ defmodule CoreTest do
   use ExUnit.Case
 
   use Core.Behaviour
+  require Core.Debug
 
-  def init(parent, fun) do
-      fun.(parent)
+  def init(parent, debug, fun) do
+      fun.(parent, debug)
   end
 
-  def continue(fun, parent) do
-    fun.(parent)
+  def continue(fun, parent, debug) do
+    fun.(parent, debug)
   end
 
   setup_all do
@@ -31,7 +32,7 @@ defmodule CoreTest do
 
   test "start_link with init_ack/0" do
     starter = self()
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       Process.send(starter, { :parent, parent })
       close()
@@ -44,7 +45,7 @@ defmodule CoreTest do
   end
 
   test "start_link with timeout" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       :timer.sleep(5000)
     end
     assert { :error, :timeout } = Core.start_link(nil, CoreTest, fun,
@@ -53,7 +54,7 @@ defmodule CoreTest do
   end
 
   test "start_link with init_ignore" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ignore()
       :timer.sleep(5000)
     end
@@ -65,7 +66,7 @@ defmodule CoreTest do
  end
 
   test "start_link with init_ack/1" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack(:extra_data)
       close()
     end
@@ -75,8 +76,8 @@ defmodule CoreTest do
   end
 
   test "start_link with init_stop" do
-    fun = fn(parent) ->
-      Core.init_stop(__MODULE__, parent, nil, :init_error)
+    fun = fn(parent, debug) ->
+      Core.init_stop(__MODULE__, parent, debug, nil, :init_error)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -87,7 +88,7 @@ defmodule CoreTest do
   end
 
   test "start_link register local name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       close()
     end
@@ -105,7 +106,7 @@ defmodule CoreTest do
   end
 
   test "start_link register global name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       close()
     end
@@ -123,7 +124,7 @@ defmodule CoreTest do
   end
 
   test "start_link register via name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       close()
     end
@@ -142,7 +143,7 @@ defmodule CoreTest do
 
   test "start with init_ack/0" do
     starter = self()
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       Process.send(starter, { :parent, parent })
       close()
@@ -155,7 +156,7 @@ defmodule CoreTest do
   end
 
   test "start with timeout" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       :timer.sleep(5000)
     end
     assert { :error, :timeout } = Core.start(nil, CoreTest, fun,
@@ -165,7 +166,7 @@ defmodule CoreTest do
 
 
   test "start register local name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       close()
     end
@@ -180,7 +181,7 @@ defmodule CoreTest do
 
   test "start with link" do
     starter = self()
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Process.send(starter, { :parent, parent })
       Core.init_ack()
       close()
@@ -194,7 +195,7 @@ defmodule CoreTest do
 
   test "spawn_link with init_ack/0" do
     starter = self()
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       Process.send(starter, { :parent, parent })
       close()
@@ -208,7 +209,7 @@ defmodule CoreTest do
   end
 
   test "spawn_link with init_ignore" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ignore()
       :timer.sleep(5000)
     end
@@ -221,7 +222,7 @@ defmodule CoreTest do
  end
 
   test "spawn_link with init_ack/1" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack(:extra_data)
       close()
     end
@@ -232,8 +233,8 @@ defmodule CoreTest do
   end
 
   test "spawn_link with init_stop" do
-    fun = fn(parent) ->
-      Core.init_stop(__MODULE__, parent, nil, :init_error)
+    fun = fn(parent, debug) ->
+      Core.init_stop(__MODULE__, parent, debug, nil, :init_error)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -259,8 +260,8 @@ defmodule CoreTest do
       :hi ->
         System.stacktrace()
     end
-    fun = fn(parent) ->
-      Core.init_stop(__MODULE__, parent, nil, { exception, stack })
+    fun = fn(parent, debug) ->
+      Core.init_stop(__MODULE__, parent, debug, nil, { exception, stack })
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -282,8 +283,8 @@ defmodule CoreTest do
 
   test "spawn_link with exception and nil stack init_stop" do
     exception = ArgumentError[message: "hello"]
-    fun = fn(parent) ->
-      Core.init_stop(__MODULE__, parent, nil, { exception, nil })
+    fun = fn(parent, debug) ->
+      Core.init_stop(__MODULE__, parent, debug, nil, { exception, nil })
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -303,14 +304,45 @@ defmodule CoreTest do
     assert TestIO.binread() === report
   end
 
-  test "spawn_link with normal init_stop" do
-    fun = fn(parent) ->
+  test "spawn_link with init_stop and debug" do
+    fun = fn(parent, debug) ->
       event = :test_event
-      Core.init_stop(__MODULE__, parent, nil, :normal, event)
+      debug = Core.Debug.event(debug, event)
+      Core.init_stop(__MODULE__, parent, debug, nil, :init_error, event)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(CoreTest, fun)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
+    assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
+    assert reason === :init_error
+    Process.flag(:trap_exit, trap)
+    refute_received { :ack, ^pid, _ }, "init_ack sent"
+    output = TestIO.binread()
+    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
+      "   Arguments: nil\n" <>
+      "   Pid: #{inspect(pid)}\n" <>
+      "   Parent: #{inspect(self())}\n" <>
+      "   Last Event: :test_event\n" <>
+      "   EXIT: :init_error\n\n"
+    assert String.contains?(output, [report])
+    log = "** Core.Debug #{inspect(pid)} event log:\n" <>
+      "** Core.Debug #{inspect(pid)} :test_event\n\n"
+    assert String.contains?(output, [log])
+    assert byte_size(output) === (byte_size(report) + byte_size(log))
+      "unexpected output in:\n #{output}"
+  end
+
+  test "spawn_link with normal init_stop and debug" do
+    fun = fn(parent, debug) ->
+      event = :test_event
+      debug = Core.Debug.event(debug, event)
+      Core.init_stop(__MODULE__, parent, debug, nil, :normal, event)
+      :timer.sleep(5000)
+    end
+    trap = Process.flag(:trap_exit, :true)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :normal
     Process.flag(:trap_exit, trap)
@@ -318,14 +350,16 @@ defmodule CoreTest do
     assert TestIO.binread() === <<>>
   end
 
-  test "spawn_link with shutdown init_stop" do
-    fun = fn(parent) ->
+  test "spawn_link with shutdown init_stop and debug" do
+    fun = fn(parent, debug) ->
       event = :test_event
-      Core.init_stop(__MODULE__, parent, nil, :shutdown, event)
+      debug = Core.Debug.event(debug, event)
+      Core.init_stop(__MODULE__, parent, debug, nil, :shutdown, event)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(CoreTest, fun)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :shutdown
     Process.flag(:trap_exit, trap)
@@ -333,14 +367,16 @@ defmodule CoreTest do
     assert TestIO.binread() === <<>>
   end
 
-  test "spawn_link with shutdown term init_stop" do
-    fun = fn(parent) ->
+  test "spawn_link with shutdown term init_stop and debug" do
+    fun = fn(parent, debug) ->
       event = :test_event
-      Core.init_stop(__MODULE__, parent, nil, { :shutdown, nil }, event)
+      debug = Core.Debug.event(debug, event)
+      Core.init_stop(__MODULE__, parent, debug, nil, { :shutdown, nil }, event)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(CoreTest, fun)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === { :shutdown, nil }
     Process.flag(:trap_exit, trap)
@@ -350,7 +386,7 @@ defmodule CoreTest do
 
   test "spawn_link register local name" do
     starter = self()
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Process.send(starter, { :registered, self() })
       Core.init_ack()
       close()
@@ -372,7 +408,7 @@ defmodule CoreTest do
 
   test "spawn with init_ack/0" do
     starter = self()
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       Process.send(starter, { :parent, parent })
       close()
@@ -387,7 +423,7 @@ defmodule CoreTest do
 
   test "spawn register local name" do
     starter = self()
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Process.send(starter, { :registered, self() })
       Core.init_ack()
       close()
@@ -408,7 +444,7 @@ defmodule CoreTest do
   end
 
   test "spawn with link" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       close()
     end
@@ -419,9 +455,9 @@ defmodule CoreTest do
   end
 
   test "stop" do
-    fun = fn(parent) ->
+    fun = fn(parent, debug) ->
       Core.init_ack()
-      Core.stop(__MODULE__, nil, parent, :error)
+      Core.stop(__MODULE__, nil, parent, debug, :error)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -446,9 +482,9 @@ defmodule CoreTest do
       :hi ->
         System.stacktrace()
     end
-    fun = fn(parent) ->
+    fun = fn(parent, debug) ->
       Core.init_ack()
-      Core.stop(__MODULE__, nil, parent, { exception, stack })
+      Core.stop(__MODULE__, nil, parent, debug, { exception, stack })
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -469,9 +505,9 @@ defmodule CoreTest do
 
   test "stop with exception and nil stack" do
     exception = ArgumentError[message: "hello"]
-    fun = fn(parent) ->
+    fun = fn(parent, debug) ->
       Core.init_ack()
-      Core.stop(__MODULE__, nil, parent, { exception, nil })
+      Core.stop(__MODULE__, nil, parent, debug, { exception, nil })
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
@@ -488,45 +524,81 @@ defmodule CoreTest do
       "\n"
     assert TestIO.binread() === report
   end
-  test "stop with normal" do
-    fun = fn(parent) ->
+
+  test "stop and debug" do
+    fun = fn(parent, debug) ->
       Core.init_ack()
       event = :test_event
-      Core.stop(__MODULE__, nil, parent, :normal, event)
+      debug = Core.Debug.event(debug, event)
+      Core.stop(__MODULE__, nil, parent, debug, :error, event)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(CoreTest, fun)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
+    assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
+    assert reason === :error
+    Process.flag(:trap_exit, trap)
+    output = TestIO.binread()
+    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
+      "   State: nil\n" <>
+      "   Pid: #{inspect(pid)}\n" <>
+      "   Parent: #{inspect(self())}\n" <>
+      "   Last Event: :test_event\n" <>
+      "   EXIT: :error\n\n"
+    assert String.contains?(output, [report])
+    log = "** Core.Debug #{inspect(pid)} event log:\n" <>
+      "** Core.Debug #{inspect(pid)} :test_event\n\n"
+    assert String.contains?(output, [log])
+    assert byte_size(output) === (byte_size(report) + byte_size(log))
+      "unexpected output in:\n #{output}"
+  end
+
+  test "stop with normal and debug" do
+    fun = fn(parent, debug) ->
+      Core.init_ack()
+      event = :test_event
+      debug = Core.Debug.event(debug, event)
+      Core.stop(__MODULE__, nil, parent, debug, :normal, event)
+      :timer.sleep(5000)
+    end
+    trap = Process.flag(:trap_exit, :true)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :normal
     Process.flag(:trap_exit, trap)
     assert TestIO.binread() === <<>>
   end
 
-  test "stop with shutdown" do
-    fun = fn(parent) ->
+  test "stop with shutdown and debug" do
+    fun = fn(parent, debug) ->
       Core.init_ack()
       event = :test_event
-      Core.stop(__MODULE__, nil, parent, :shutdown, event)
+      debug = Core.Debug.event(debug, event)
+      Core.stop(__MODULE__, nil, parent, debug, :shutdown, event)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(CoreTest, fun)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :shutdown
     Process.flag(:trap_exit, trap)
     assert TestIO.binread() === <<>>
   end
 
-  test "stop with shutdown term" do
-    fun = fn(parent) ->
+  test "stop with shutdown term and debug" do
+    fun = fn(parent, debug) ->
       Core.init_ack()
       event = :test_event
-      Core.stop(__MODULE__, nil, parent, { :shutdown, nil }, event)
+      debug = Core.Debug.event(debug, event)
+      Core.stop(__MODULE__, nil, parent, debug, { :shutdown, nil }, event)
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(CoreTest, fun)
+    pid = Core.spawn_link(nil, CoreTest, fun,
+      [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === { :shutdown, nil }
     Process.flag(:trap_exit, trap)
@@ -535,7 +607,7 @@ defmodule CoreTest do
 
   test "uncaught exception" do
     exception = ArgumentError[message: "hello"]
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       raise exception, []
     end
@@ -557,7 +629,7 @@ defmodule CoreTest do
   end
 
   test "uncaught throw" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       throw(:thrown)
     end
@@ -580,7 +652,7 @@ defmodule CoreTest do
   end
 
   test "uncaught exit" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       exit(:exited)
     end
@@ -594,12 +666,12 @@ defmodule CoreTest do
 
   test "uncaught exception after hibernate" do
     exception = ArgumentError[message: "hello"]
-    fun = fn(parent) ->
+    fun = fn(parent, debug) ->
       Core.init_ack()
       # send message to self to wake up immediately
       Process.send(self(), :awaken)
-      fun2 = fn(_parent) -> raise ArgumentError, [message: "hello"] end
-      Core.hibernate(__MODULE__, :continue, fun2, parent)
+      fun2 = fn(_parent, _debug) -> raise ArgumentError, [message: "hello"] end
+      Core.hibernate(__MODULE__, :continue, fun2, parent, debug)
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(CoreTest, fun)
@@ -619,12 +691,12 @@ defmodule CoreTest do
   end
 
   test "uncaught throw after hibernate" do
-    fun = fn(parent) ->
+    fun = fn(parent, debug) ->
       Core.init_ack()
       # send message to self to wake up immediately
       Process.send(self(), :awaken)
-      fun2 = fn(_parent) -> throw(:thrown) end
-      Core.hibernate(__MODULE__, :continue, fun2, parent)
+      fun2 = fn(_parent, _debug) -> throw(:thrown) end
+      Core.hibernate(__MODULE__, :continue, fun2, parent, debug)
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(CoreTest, fun)
@@ -645,12 +717,12 @@ defmodule CoreTest do
   end
 
   test "uncaught exit after hibernate" do
-    fun = fn(parent) ->
+    fun = fn(parent, debug) ->
       Core.init_ack()
       # send message to self to wake up immediately
       Process.send(self(), :awaken)
-      fun2 = fn(_parent) -> exit(:exited) end
-      Core.hibernate(__MODULE__, :continue, fun2, parent)
+      fun2 = fn(_parent, _debug) -> exit(:exited) end
+      Core.hibernate(__MODULE__, :continue, fun2, parent, debug)
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(CoreTest, fun)
@@ -661,7 +733,7 @@ defmodule CoreTest do
   end
 
   test "call to pid" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, from, :hello } ->
@@ -676,7 +748,7 @@ defmodule CoreTest do
   end
 
   test "call to local name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, from, :hello } ->
@@ -691,7 +763,7 @@ defmodule CoreTest do
   end
 
   test "call to local name with local node" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, from, :hello } ->
@@ -706,7 +778,7 @@ defmodule CoreTest do
   end
 
   test "call to global name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, from, :hello } ->
@@ -722,7 +794,7 @@ defmodule CoreTest do
   end
 
   test "call to via name" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, from, :hello } ->
@@ -738,7 +810,7 @@ defmodule CoreTest do
   end
 
   test "call to pid and timeout" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -756,7 +828,7 @@ defmodule CoreTest do
   end
 
   test "call to pid that is already dead" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       close()
     end
@@ -770,7 +842,7 @@ defmodule CoreTest do
   end
 
   test "call to pid that exits normally" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -787,7 +859,7 @@ defmodule CoreTest do
   end
 
   test "call to pid that shuts down" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -806,7 +878,7 @@ defmodule CoreTest do
   end
 
   test "call to pid that shuts down with term" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -832,7 +904,7 @@ defmodule CoreTest do
       :stacktrace ->
         System.stacktrace()
     end
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -855,7 +927,7 @@ defmodule CoreTest do
 
   test "call to pid that exits with exception and nil stack" do
     exception = ArgumentError[message: "hello"]
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -876,7 +948,7 @@ defmodule CoreTest do
   end
 
   test "call to pid that is killed" do
-    fun = fn(_parent) ->
+    fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, _from, :hello } ->
@@ -940,7 +1012,7 @@ defmodule CoreTest do
   end
 
   test "cast to pid" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -956,7 +1028,7 @@ defmodule CoreTest do
   end
 
   test "cast to local name" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -972,7 +1044,7 @@ defmodule CoreTest do
   end
 
   test "cast to local name with local node" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -988,7 +1060,7 @@ defmodule CoreTest do
   end
 
   test "cast to global name" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -1005,7 +1077,7 @@ defmodule CoreTest do
   end
 
   test "cast to via name" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -1040,7 +1112,7 @@ defmodule CoreTest do
   end
 
   test "send to pid" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -1056,7 +1128,7 @@ defmodule CoreTest do
   end
 
   test "send to local name" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -1073,7 +1145,7 @@ defmodule CoreTest do
   end
 
   test "send to local name with local node" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -1090,7 +1162,7 @@ defmodule CoreTest do
   end
 
   test "send to global name" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
@@ -1107,7 +1179,7 @@ defmodule CoreTest do
   end
 
   test "send to via name" do
-    fun = fn(parent) ->
+    fun = fn(parent, _debug) ->
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->

@@ -1,6 +1,7 @@
 defmodule Core.Behaviour do
   @moduledoc """
-  This module is a convenience module for adding the `Core` behaviour.
+  This module is a convenience module for adding the `Core` behaviour and
+  requiring the `Core.Debug` module (for using the `Core.Debug.event/2 macro).
 
   ## Examples
 
@@ -11,7 +12,7 @@ defmodule Core.Behaviour do
         @spec start_link() :: { :ok, pid }
         def start_link(), do: Core.start_link(__MODULE__, nil)
 
-        def init(_parent, nil) do
+        def init(_parent, _debug, nil) do
           Core.init_ack()
           IO.puts("Hello World!")
         end
@@ -28,19 +29,19 @@ defmodule Core.Behaviour do
         @spec spawn_link((() -> any)) :: pid
         def spawn_link(fun), do: Core.spawn_link(__MODULE__, fun)
 
-        def init(parent, fun) when is_function(fun, 0) do
+        def init(parent, debug, fun) when is_function(fun, 0) do
           Core.init_ack()
           try do
             fun.()
           rescue
             exception ->
               reason = { exception, System.stacktrace() }
-              Core.stop(__MODULE__, fun, parent, reason)
+              Core.stop(__MODULE__, fun, parent, debug, reason)
           catch
             :throw, value ->
               exception = Core.UncaughtThrowError[actual: value]
               reason = { exception, System.stacktrace() }
-              Core.stop(__MODULE__, fun, parent, reason)
+              Core.stop(__MODULE__, fun, parent, debug, reason)
           end
         end
 
@@ -60,7 +61,7 @@ defmodule Core.Behaviour do
         @spec start_link() :: { :ok, pid }
         def start_link(), do: Core.start_link(__MODULE__, nil)
 
-        def init(_parent, _nil) do
+        def init(_parent, _debug, nil) do
           Core.init_ack()
           loop(0)
         end
@@ -91,6 +92,7 @@ defmodule Core.Behaviour do
     quote location: :keep do
 
       @behaviour Core
+      require Core.Debug
 
       @doc false
       def init(_parent, _debug, _args) do

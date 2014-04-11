@@ -26,46 +26,60 @@ defmodule Core.Sys.Behaviour do
 
           @spec start_link() :: { :ok, pid }
           def start_link() do
-            Core.start_link(__MODULE__, nil)
+            Core.start_link(nil, __MODULE__, nil,
+              [{ :debug, [{ :log, 10 }, { :stats, true }] }])
           end
 
           ## Core api
 
-          def init(parent, _args) do
+          def init(parent, debug, _args) do
             Core.init_ack()
-            loop(0, parent)
+            loop(0, parent, debug)
           end
 
           ## Core.Sys (minimal) api
 
-          def system_continue(count, parent), do: loop(count, parent)
+          def system_continue(count, parent, debug), do: loop(count, parent, debug)
 
-          def system_terminate(count, parent, reason) do
-            terminate(count, parent, reason)
+          def system_terminate(count, parent, debug, reason) do
+            terminate(count, parent, debug, reason)
           end
 
           ## Internal
 
-          defp loop(count, parent) do
-            Core.Sys.receive(__MODULE__, count, parent) do
+          defp loop(count, parent, debug) do
+            Core.Sys.receive(__MODULE__, count, parent, debug) do
               { __MODULE__, from, :ping } ->
+                # It is not required to record events using `Core.Debug.event/1` but is
+                # a useful debug feature that is compiled to a no-op in production.
+                debug = Core.Debug.event(debug, { :in, :ping, elem(from, 0) })
                 Core.reply(from, :pong)
-                loop(count + 1, parent)
+                debug = Core.Debug.event(debug, { :out, :pong, elem(from, 0) })
+                count = count + 1
+                debug = Core.Debug.event(debug, { :count, count })
+                loop(count, parent, debug)
               { __MODULE__, from, :count } ->
+                debug = Core.Debug.event(debug, { :in, :count, elem(from, 0) })
                 Core.reply(from, count)
-                loop(count, parent)
+                debug = Core.Debug.event(debug, { :out, count, elem(from, 0) })
+                loop(count, parent, debug)
               { __MODULE__, from, :close } ->
+                debug = Core.Debug.event(debug, { :in, :close, elem(from, 0) })
                 Core.reply(from, :ok)
-                terminate(count, parent, :normal)
+                debug = Core.Debug.event(debug, { :out, :ok, elem(from, 0)  })
+                terminate(count, parent, debug, :normal)
               { __MODULE__, from, :die } ->
+                debug = Core.Debug.event(debug, { :in, :die, elem(from, 0) })
                 Core.reply(from, :ok)
-                terminate(count, parent, :die)
+                debug = Core.Debug.event(debug, { :out, :ok, elem(from, 0)  })
+                terminate(count, parent, debug, :die)
             end
           end
 
-          defp terminate(count, parent, reason) do
+          defp terminate(count, parent, debug, reason) do
             event = { :EXIT, reason }
-            Core.stop(__MODULE__, count, parent, reason, event)
+            debug = Core.Debug.event(debug, event)
+            Core.stop(__MODULE__, count, parent, debug, reason, event)
           end
 
         end

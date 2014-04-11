@@ -6,16 +6,20 @@ defmodule Core.SysTest do
   use Core.Behaviour
   use Core.Sys.Behaviour
 
-  def init(parent, fun) do
+  def init(parent, debug, fun) do
     Core.init_ack()
-    loop(fun, parent)
+    loop(fun, parent, debug)
   end
 
-  def loop(fun, parent) do
-    Core.Sys.receive(__MODULE__, fun, parent) do
+  def loop(fun, parent, debug) do
+    Core.Sys.receive(__MODULE__, fun, parent, debug) do
+      { __MODULE__, from, { :event, event } } ->
+        debug = Core.Debug.event(debug, event)
+        Core.reply(from, :ok)
+        loop(fun, parent, debug)
       { __MODULE__, from, :eval } ->
         Core.reply(from, fun.())
-        loop(fun, parent)
+        loop(fun, parent, debug)
     end
   end
 
@@ -30,9 +34,9 @@ defmodule Core.SysTest do
 
   def system_change_data(_oldfun, _mod, _oldvsn, newfun), do: newfun.()
 
-  def system_continue(fun, parent), do: loop(fun, parent)
+  def system_continue(fun, parent, debug), do: loop(fun, parent, debug)
 
-  def system_terminate(_fun, _parent, reason) do
+  def system_terminate(_fun, _parent, debug, reason) do
     exit(reason)
   end
 
@@ -246,9 +250,39 @@ defmodule Core.SysTest do
     assert status[:data] === ref
     assert status[:pid] === pid
     assert status[:name] === pid
+    assert status[:log] === []
+    assert status[:stats] === nil
     assert status[:sys_status] === :running
     assert status[:parent] === self()
     assert Map.has_key?(status, :dictionary)
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_status with log and 2 events" do
+    ref = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    status = Core.Sys.get_status(pid)
+    assert status[:log] === [ { :event, 1}, { :event, 2} ]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_status with stats and 1 cast message" do
+    ref = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref end,
+      [{ :debug, [{ :stats, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
+    status = Core.Sys.get_status(pid)
+    stats = status[:stats]
+    assert is_map(stats), "stats not returned"
+    assert stats[:in] === 1
+    assert stats[:out] === 0
+    assert is_integer(stats[:reductions])
+    assert stats[:start_time] <= stats[:current_time]
     assert close(pid) === :ok
     assert TestIO.binread() === <<>>
   end
@@ -298,6 +332,9 @@ defmodule Core.SysTest do
       "#{inspect(__MODULE__)} #{inspect(pid)}")
     assert List.keyfind(data1, 'Status', 0) === { 'Status', :running }
     assert List.keyfind(data1, 'Parent', 0) === { 'Parent', self() }
+    assert List.keyfind(data1, 'Logged events', 0) === { 'Logged events', [] }
+    assert List.keyfind(data1, 'Statistics', 0) === { 'Statistics',
+      :no_statistics }
     assert List.keyfind(data1, 'Name', 0) === { 'Name', pid }
     assert List.keyfind(data1, 'Module', 0) === { 'Module', __MODULE__ }
     assert List.keyfind(data2, 'Module data', 0) === { 'Module data', ref }
@@ -322,6 +359,23 @@ defmodule Core.SysTest do
     assert TestIO.binread() === <<>>
   end
 
+  test ":sys.get_status with log" do
+    ref = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500) 
+    assert { :status, ^pid, { :module, Core.Sys },
+      [_, _, _, debug, status] } = :sys.get_status(pid)
+    assert [{ :header, _header }, { :data, data1 }, { :data, _data2 }] = status
+    # This is how gen_* displays the log
+    sys_log = :sys.get_debug(:log, debug, [])
+    assert List.keyfind(data1, 'Logged events', 0) === { 'Logged events',
+      sys_log }
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
   test "get_status :gen_server" do
     ref = make_ref()
     { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end)
@@ -330,6 +384,8 @@ defmodule Core.SysTest do
     assert status[:data] === ref
     assert status[:pid] === pid
     assert status[:name] === pid
+    assert status[:log] === []
+    assert status[:stats] === nil
     assert status[:sys_status] === :running
     assert status[:parent] === self()
     assert Map.has_key?(status, :dictionary)
@@ -345,6 +401,8 @@ defmodule Core.SysTest do
     assert status[:data] === [{ GE, false, ref}]
     assert status[:pid] === pid
     assert status[:name] === pid
+    assert status[:log] === []
+    assert status[:stats] === nil
     assert status[:sys_status] === :running
     assert status[:parent] === self()
     assert Map.has_key?(status, :dictionary)
@@ -360,10 +418,36 @@ defmodule Core.SysTest do
     assert status[:data] === { :state, ref }
     assert status[:pid] === pid
     assert status[:name] === pid
+    assert status[:log] === []
     assert status[:stats] === nil
     assert status[:sys_status] === :running
     assert status[:parent] === self()
     assert Map.has_key?(status, :dictionary)
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_status :gen_server with log" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [{ :log, 10 }])
+    Process.send(pid, { :msg, 1 })
+    Process.send(pid, { :msg, 2 })
+    status = Core.Sys.get_status(pid)
+    assert status[:log] === [{ :in, { :msg, 1 } }, { :noreply, ref },
+      { :in, { :msg, 2 } }, { :noreply, ref }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_status :gen_fsm with log" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end,
+      [{ :log, 10 }])
+    Process.send(pid, { :msg, 1 })
+    Process.send(pid, { :msg, 2 })
+    status = Core.Sys.get_status(pid)
+    assert status[:log] === [{ :in, { :msg, 1 } }, :return,
+      { :in, { :msg, 2 } }, :return]
     assert close(pid) === :ok
     assert TestIO.binread() === <<>>
   end
@@ -708,6 +792,630 @@ defmodule Core.SysTest do
     assert TestIO.binread() === <<>>
   end
 
+  test "get_log with 0 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    [{ :debug, [{ :log, 10 }] }])
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log with 2 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.get_log(pid) === [{ :event, 1 }, { :event, 2 }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log with no logging and 2 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_server with 0 events" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [{ :log, 10 }])
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_server with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [{ :log, 10 }])
+    Process.send(pid, 1)
+    Process.send(pid, 2)
+    assert Core.Sys.get_log(pid) === [{ :in, 1 }, { :noreply, ref },
+      { :in, 2 }, { :noreply, ref }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_server with no logging" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_event with no logging (can never log)" do
+    ref = make_ref()
+    { :ok, pid } = GE.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_fsm with 0 events" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end,
+      [{ :log, 10 }])
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_fsm with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end,
+      [{ :log, 10 }])
+    Process.send(pid, 1)
+    Process.send(pid, 2)
+    assert Core.Sys.get_log(pid) === [{ :in, 1 }, :return, { :in, 2 }, :return]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_log :gen_fsm with no logging" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "print_log with 2 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log:\n" <>
+    "** Core.Debug #{inspect(pid)} #{inspect({ :event, 1 })}\n" <>
+    "** Core.Debug #{inspect(pid)} #{inspect({ :event, 2 })}\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log with 0 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log with no logging and 2 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log with cast message in" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log:\n" <>
+    "** Core.Debug #{inspect(pid)} message in: :hello\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log with call message in" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log:\n" <>
+    "** Core.Debug #{inspect(pid)} message in (from #{inspect(self())}): " <>
+    ":hello\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log with message out" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :out, :hello, self() } }, 500)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log:\n" <>
+    "** Core.Debug #{inspect(pid)} message out (to #{inspect(self())}): " <>
+    ":hello\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_server with 0 events" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [{ :log, 10 }])
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_server with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [{ :log, 10 }])
+    Process.send(pid, 1)
+    Process.send(pid, 2)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    erl_pid = inspect_erl(pid)
+    erl_ref = inspect_erl(ref)
+    report = "** Core.Debug #{inspect(pid)} event log:\n" <>
+    "*DBG* #{erl_pid} got 1\n" <>
+    "*DBG* #{erl_pid} new state #{erl_ref}\n" <>
+    "*DBG* #{erl_pid} got 2\n" <>
+    "*DBG* #{erl_pid} new state #{erl_ref}\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_server with no logging" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+   assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_event with no logging (can never log)" do
+    ref = make_ref()
+    { :ok, pid } = GE.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+   assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_fsm with 0 events" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end,
+      [{ :log, 10 }])
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_fsm with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end,
+      [{ :log, 10 }])
+    Process.send(pid, 1)
+    Process.send(pid, 2)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    erl_pid = inspect_erl(pid)
+    report = "** Core.Debug #{inspect(pid)} event log:\n" <>
+    "*DBG* #{erl_pid} got 1 in state state\n" <>
+    "*DBG* #{erl_pid} switched to state state\n" <>
+    "*DBG* #{erl_pid} got 2 in state state\n" <>
+    "*DBG* #{erl_pid} switched to state state\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "print_log :gen_fsm with no logging" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end)
+    assert Core.Sys.print_log(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} event log is empty\n" <>
+    "\n"
+   assert TestIO.binread() === report
+  end
+
+  test "set_log 10 with 2 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end)
+    assert Core.Sys.set_log(pid, 10) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.get_log(pid) === [{ :event, 1 }, { :event, 2 }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 1 with 2 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end)
+    assert Core.Sys.set_log(pid, 1) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.get_log(pid) === [{ :event, 2 }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 0 with 1 event before and 1 event after" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log, 10 }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert Core.Sys.set_log(pid, 0) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 10 :gen_server with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.set_log(pid, 10) === :ok
+    Process.send(pid, 1)
+    Process.send(pid, 2)
+    assert Core.Sys.get_log(pid) === [{ :in, 1 }, { :noreply, ref },
+      { :in, 2 }, { :noreply, ref }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 1 :gen_server with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.set_log(pid, 1) === :ok
+    Process.send(pid, 1)
+    assert Core.Sys.get_log(pid) === [{ :noreply, ref }]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 0 :gen_server with 2 events before and 2 event after" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [{ :log, 10 }])
+    Process.send(pid, 1)
+    assert Core.Sys.set_log(pid, 0) === :ok
+    Process.send(pid, 2)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 10 :gen_fsm with 4 events" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end)
+    assert Core.Sys.set_log(pid, 10) === :ok
+    Process.send(pid, 1)
+    Process.send(pid, 2)
+    assert Core.Sys.get_log(pid) === [{ :in, 1 }, :return, { :in, 2 }, :return]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 1 :gen_fsm with 2 events" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end)
+    assert Core.Sys.set_log(pid, 1) === :ok
+    Process.send(pid, 1)
+    assert Core.Sys.get_log(pid) === [:return]
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_log 0 :gen_fsm with 2 events before and 2 event after" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end,
+      [{ :log, 10 }])
+    Process.send(pid, 1)
+    assert Core.Sys.set_log(pid, 0) === :ok
+    Process.send(pid, 2)
+    assert Core.Sys.get_log(pid) === []
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats with 0 events" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :stats, true }] }])
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:in] === 0
+    assert stats[:out] === 0
+    assert is_integer(stats[:reductions])
+    assert stats[:start_time] <= stats[:current_time]
+    assert Map.size(stats) === 5
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats with no stats" do
+    ref = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref end)
+    assert Core.Sys.get_stats(pid) === nil
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats with cast message in" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :stats, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:in] === 1
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats with call message in" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :stats, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:in] === 1
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats with message out" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :stats, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :out, :hello, self() } }, 500)
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:out] === 1
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats :gen_server with no stats" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.get_stats(pid) === nil
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats :gen_server with 1 message in" do
+    ref = make_ref()
+    { :ok, pid } = GS.start_link(fn() -> { :ok, ref } end, [:statistics])
+    Process.send(pid, 1)
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:in] === 1
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats :gen_event with no stats" do
+    ref = make_ref()
+    { :ok, pid } = GE.start_link(fn() -> { :ok, ref } end)
+    assert Core.Sys.get_stats(pid) === nil
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats :gen_fsm with no stats" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref } end)
+    assert Core.Sys.get_stats(pid) === nil
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "get_stats :gen_fsm with 1 message in" do
+    ref = make_ref()
+    { :ok, pid } = GFSM.start_link(fn() -> { :ok, :state, ref}  end,
+      [:statistics])
+    Process.send(pid, 1)
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:in] === 1
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "print_stats with one of each event" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :stats, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :out, :hello, self() } }, 500)
+    assert Core.Sys.print_stats(pid) === :ok
+    assert close(pid) === :ok
+    output = TestIO.binread()
+    pattern = "\\A\\*\\* Core.Debug #{inspect(pid)} statistics:\n" <>
+    "   Start Time: \\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\n" <>
+    "   Current Time: \\d\\d\\d\\d-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\n" <>
+    "   Messages In: 2\n" <>
+    "   Messages Out: 1\n" <>
+    "   Reductions: \\d+\n" <>
+    "\n\\z"
+    regex = Regex.compile!(pattern)
+    assert Regex.match?(regex, output),
+      "#{inspect(regex)} not found in #{output}"
+  end
+
+  test "print_stats with no stats" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end)
+    assert Core.Sys.print_stats(pid) === :ok
+    assert close(pid) === :ok
+    report = "** Core.Debug #{inspect(pid)} statistics not active\n" <>
+    "\n"
+    assert TestIO.binread() === report
+  end
+
+  test "set_stats true with a cast message in" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end)
+    assert Core.Sys.set_stats(pid, true) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
+    stats = Core.Sys.get_stats(pid)
+    assert stats[:in] === 1
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "set_stats false after a cast message in" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :stats, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
+    assert Core.Sys.set_stats(pid, false) === :ok
+    assert Core.Sys.get_stats(pid) === nil
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "log_file" do
+    ref1 = make_ref()
+    file = Path.join(__DIR__, "logfile")
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :log_file, file }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert Core.Sys.set_log_file(pid, nil) === :ok
+    log = "** Core.Debug #{inspect(pid)} #{inspect({ :event, 1 })}\n"
+    assert File.read!(file) === log
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert Core.Sys.set_log_file(pid, file) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 3 } }, 500)
+    assert close(pid) === :ok
+    log = "** Core.Debug #{inspect(pid)} #{inspect({ :event, 3 })}\n"
+    assert File.read!(file) === log
+    assert TestIO.binread() === <<>>
+  end
+
+  test "log_file bad file" do
+    ref1 = make_ref()
+    file = Path.join(Path.join(__DIR__, "baddir"), "logfile")
+    pid = Core.spawn_link( __MODULE__, fn() -> ref1 end)
+    assert_raise ArgumentError, "could not open file: #{inspect(file)}",
+      fn() -> Core.Sys.set_log_file(pid, file) end
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "trace" do
+    ref1 = make_ref()
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    [{ :debug, [{ :trace, true }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert Core.Sys.set_trace(pid, false) === :ok
+    report1 = "** Core.Debug #{inspect(pid)} #{inspect({ :event, 1 })}\n"
+    assert TestIO.binread() === report1
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    assert TestIO.binread() === report1
+    assert Core.Sys.set_trace(pid, true) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
+    assert close(pid) === :ok
+    report2 =  "** Core.Debug #{inspect(pid)} " <>
+    "message in (from #{inspect(self())}): :hello\n"
+    assert TestIO.binread() === "#{report1}#{report2}"
+  end
+
+  test "hook" do
+    ref1 = make_ref()
+    hook = fn(to, event, process) -> Process.send(to, { process, event }) end
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :hook, { hook, self() } }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert_received { ^pid, { :event, 1 } }, "hook did not send message"
+    assert Core.Sys.set_hook(pid, hook, nil) === :ok
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    refute_received { ^pid, { :event, 2 } },
+      "set_hook nil did not stop hook"
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "hook set_hook changes hook state" do
+    ref1 = make_ref()
+    hook = fn(to, event, process) -> Process.send(to, { process, event }) end
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :hook, { hook, self() } }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert_received { ^pid, { :event, 1 } }, "hook did not send message"
+    assert Core.Sys.set_hook(pid, hook, pid)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    refute_received { ^pid, { :event, 2 } },
+      "strt_hook did not change hook state"
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "hook raises" do
+    ref1 = make_ref()
+    hook = fn(_to, :raise, _process) ->
+      raise(ArgumentError, [])
+      (to, event, process) ->
+        Process.send(to, { process, event })
+    end
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :hook, { hook, self() } }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert_received { ^pid, { :event, 1 } }, "hook did not send message"
+    :ok = Core.call(pid, __MODULE__, { :event, :raise }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    refute_received { ^pid, { :event, 2 } }, "hook raise did not stop it"
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
+
+  test "hook done" do
+    ref1 = make_ref()
+    hook = fn(_to, :done, _process) ->
+      :done
+      (to, event, process) ->
+        Process.send(to, { process, event })
+    end
+    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+      [{ :debug, [{ :hook, { hook, self() } }] }])
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
+    assert_received { ^pid, { :event, 1 } }, "hook did not send message"
+    :ok = Core.call(pid, __MODULE__, { :event, :done }, 500)
+    :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
+    refute_received { ^pid, { :event, 2 } }, "hook done did not stop it"
+    assert close(pid) === :ok
+    assert TestIO.binread() === <<>>
+  end
 
   ## utils
 
@@ -724,6 +1432,12 @@ defmodule Core.SysTest do
         Process.link(pid)
         :timeout
     end
+  end
+
+  defp inspect_erl(term) do
+    :io_lib.format('~p', [term])
+      |> List.flatten()
+      |> String.from_char_list!()
   end
 
 end
