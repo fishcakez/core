@@ -148,7 +148,7 @@ defmodule __MODULE__ do
       Process.send(starter, { :parent, parent })
       close()
     end
-    assert { :ok, pid } = Core.start(__MODULE__, fun)
+    { :ok, pid } = Core.start(__MODULE__, fun)
     assert_receive { :parent, ^pid }, 200, "parent not self()"
     refute linked?(pid), "child linked"
     assert close(pid) === :normal, "close failed"
@@ -186,7 +186,7 @@ defmodule __MODULE__ do
       Core.init_ack()
       close()
     end
-    assert { :ok, pid } = Core.start(__MODULE__, fun, [{ :spawn_opt, [:link] }])
+    { :ok, pid } = Core.start(__MODULE__, fun, [{ :spawn_opt, [:link] }])
     assert_received { :parent, ^pid }, "parent not self()"
     assert linked?(pid), "child not linked"
     assert :normal === close(pid), "close failed"
@@ -388,10 +388,10 @@ defmodule __MODULE__ do
       close()
     end
     name = :core_spawn_link
-    assert pid1 = Core.spawn_link(__MODULE__, fun, local: name)
+    pid1 = Core.spawn_link(__MODULE__, fun, local: name)
     assert_receive { :registered, ^pid1 }, 200, "did not register"
     assert Core.whereis(name) === pid1
-    assert pid2 = Core.spawn_link(__MODULE__, fun, local: name)
+    pid2 = Core.spawn_link(__MODULE__, fun, local: name)
     ref = Process.monitor(pid2)
     assert_receive { :DOWN, ^ref, _, _, :normal }, 200,
       "already registered did not exit with reason :normal"
@@ -425,10 +425,10 @@ defmodule __MODULE__ do
       close()
     end
     name = :core_spawn
-    assert pid1 = Core.spawn(__MODULE__, fun, local: name)
+    pid1 = Core.spawn(__MODULE__, fun, local: name)
     assert_receive { :registered, ^pid1 }, 200, "did not register"
     assert Core.whereis(name) === pid1
-    assert pid2 = Core.spawn(__MODULE__, fun, local: name)
+    pid2 = Core.spawn(__MODULE__, fun, local: name)
     ref = Process.monitor(pid2)
     assert_receive { :DOWN, ^ref, _, _, :normal }, 200,
       "already registered did not exit with reason :normal"

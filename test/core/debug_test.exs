@@ -116,7 +116,7 @@ defmodule Core.DebugTest do
     min_start = seconds()
     start_reductions = reductions()
     debug = Core.Debug.new([{ :stats, true }])
-    assert stats = Core.Debug.get_stats(debug)
+    stats = Core.Debug.get_stats(debug)
     max_reductions = reductions() - start_reductions
     max_current = seconds()
     assert stats[:in] === 0
@@ -130,21 +130,21 @@ defmodule Core.DebugTest do
   test "stats with cast message in and get stats" do
     debug = Core.Debug.new([{ :stats, true }])
     debug = Core.Debug.event(debug, { :in, :hello })
-    assert stats = Core.Debug.get_stats(debug)
+    stats = Core.Debug.get_stats(debug)
     assert stats[:in] === 1
   end
 
   test "stats with call message in and get stats" do
     debug = Core.Debug.new([{ :stats, true }])
     debug = Core.Debug.event(debug, { :in, :hello, self() })
-    assert stats = Core.Debug.get_stats(debug)
+    stats = Core.Debug.get_stats(debug)
     assert stats[:in] === 1
   end
 
   test "stats with message out and get stats" do
     debug = Core.Debug.new([{ :stats, true }])
     debug = Core.Debug.event(debug, { :out, :hello, self() })
-    assert stats = Core.Debug.get_stats(debug)
+    stats = Core.Debug.get_stats(debug)
     assert stats[:out] === 1
   end
 
