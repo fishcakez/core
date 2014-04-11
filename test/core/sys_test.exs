@@ -261,7 +261,7 @@ defmodule Core.SysTest do
 
   test "get_status with log and 2 events" do
     ref = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
@@ -273,7 +273,7 @@ defmodule Core.SysTest do
 
   test "get_status with stats and 1 cast message" do
     ref = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref end,
       [{ :debug, [{ :stats, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
     status = Core.Sys.get_status(pid)
@@ -361,7 +361,7 @@ defmodule Core.SysTest do
 
   test ":sys.get_status with log" do
     ref = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500) 
@@ -794,7 +794,7 @@ defmodule Core.SysTest do
 
   test "get_log with 0 events" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
     [{ :debug, [{ :log, 10 }] }])
     assert Core.Sys.get_log(pid) === []
     assert close(pid) === :ok
@@ -803,7 +803,7 @@ defmodule Core.SysTest do
 
   test "get_log with 2 events" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
@@ -887,7 +887,7 @@ defmodule Core.SysTest do
 
   test "print_log with 2 events" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 2 } }, 500)
@@ -902,7 +902,7 @@ defmodule Core.SysTest do
 
   test "print_log with 0 events" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     assert Core.Sys.print_log(pid) === :ok
     assert close(pid) === :ok
@@ -925,7 +925,7 @@ defmodule Core.SysTest do
 
   test "print_log with cast message in" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
     assert Core.Sys.print_log(pid) === :ok
@@ -938,7 +938,7 @@ defmodule Core.SysTest do
 
   test "print_log with call message in" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
     assert Core.Sys.print_log(pid) === :ok
@@ -952,7 +952,7 @@ defmodule Core.SysTest do
 
   test "print_log with message out" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :out, :hello, self() } }, 500)
     assert Core.Sys.print_log(pid) === :ok
@@ -1075,7 +1075,7 @@ defmodule Core.SysTest do
 
   test "set_log 0 with 1 event before and 1 event after" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log, 10 }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert Core.Sys.set_log(pid, 0) === :ok
@@ -1153,7 +1153,7 @@ defmodule Core.SysTest do
 
   test "get_stats with 0 events" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :stats, true }] }])
     stats = Core.Sys.get_stats(pid)
     assert stats[:in] === 0
@@ -1175,7 +1175,7 @@ defmodule Core.SysTest do
 
   test "get_stats with cast message in" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :stats, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
     stats = Core.Sys.get_stats(pid)
@@ -1186,7 +1186,7 @@ defmodule Core.SysTest do
 
   test "get_stats with call message in" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :stats, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
     stats = Core.Sys.get_stats(pid)
@@ -1197,7 +1197,7 @@ defmodule Core.SysTest do
 
   test "get_stats with message out" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :stats, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :out, :hello, self() } }, 500)
     stats = Core.Sys.get_stats(pid)
@@ -1253,7 +1253,7 @@ defmodule Core.SysTest do
 
   test "print_stats with one of each event" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :stats, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello, self() } }, 500)
@@ -1296,7 +1296,7 @@ defmodule Core.SysTest do
 
   test "set_stats false after a cast message in" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :stats, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :in, :hello } }, 500)
     assert Core.Sys.set_stats(pid, false) === :ok
@@ -1308,7 +1308,7 @@ defmodule Core.SysTest do
   test "log_file" do
     ref1 = make_ref()
     file = Path.join(__DIR__, "logfile")
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :log_file, file }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert Core.Sys.set_log_file(pid, nil) === :ok
@@ -1335,7 +1335,7 @@ defmodule Core.SysTest do
 
   test "trace" do
     ref1 = make_ref()
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
     [{ :debug, [{ :trace, true }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert Core.Sys.set_trace(pid, false) === :ok
@@ -1354,7 +1354,7 @@ defmodule Core.SysTest do
   test "hook" do
     ref1 = make_ref()
     hook = fn(to, event, process) -> Process.send(to, { process, event }) end
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :hook, { hook, self() } }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert_received { ^pid, { :event, 1 } }, "hook did not send message"
@@ -1369,7 +1369,7 @@ defmodule Core.SysTest do
   test "hook set_hook changes hook state" do
     ref1 = make_ref()
     hook = fn(to, event, process) -> Process.send(to, { process, event }) end
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :hook, { hook, self() } }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert_received { ^pid, { :event, 1 } }, "hook did not send message"
@@ -1388,7 +1388,7 @@ defmodule Core.SysTest do
       (to, event, process) ->
         Process.send(to, { process, event })
     end
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :hook, { hook, self() } }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert_received { ^pid, { :event, 1 } }, "hook did not send message"
@@ -1406,7 +1406,7 @@ defmodule Core.SysTest do
       (to, event, process) ->
         Process.send(to, { process, event })
     end
-    pid = Core.spawn_link(nil, __MODULE__, fn() -> ref1 end,
+    pid = Core.spawn_link(__MODULE__, fn() -> ref1 end,
       [{ :debug, [{ :hook, { hook, self() } }] }])
     :ok = Core.call(pid, __MODULE__, { :event, { :event, 1 } }, 500)
     assert_received { ^pid, { :event, 1 } }, "hook did not send message"

@@ -22,7 +22,7 @@ defmodule Core do
   @type name :: nil | local_name | global_name | via_name
   @typep args :: any
   @type option :: { :timeout, timeout } | { :debug, [Core.Debug.option] } |
-    { :spawn, [Process.spawn_opt] }
+    { :spawn_opt, [Process.spawn_opt] }
   @type start_return :: { :ok, pid } | { :ok, pid, any } | :ignore |
     { :error, any }
 
@@ -154,12 +154,13 @@ defmodule Core do
   the error logger if an exception is raised (and not rescued). A crash report
   is also sent when the process exits with an abnormal reason.
 
-  To atomically spawn and link to the process include the `:spawn` option
+  To atomically spawn and link to the process include the `:spawn_opt` option
   `:link`.
   """
-  @spec start(name, module, args, [option]) :: start_return
-  def start(name \\ nil, mod, args, opts \\ []) do
-    spawn_opts = Keyword.get(opts, :spawn, [])
+  @spec start(module, args, [option]) :: start_return
+  def start(mod, args, opts \\ []) do
+    name = reg_name(opts)
+    spawn_opts = Keyword.get(opts, :spawn_opt, [])
     timeout = Keyword.get(opts, :timeout, :infinity)
     init_args = [mod, name, nil, args, self(), opts]
     :proc_lib.start(__MODULE__, :init, init_args, timeout, spawn_opts)
@@ -179,9 +180,10 @@ defmodule Core do
   A processes created with this function should exit when its parent does and
   with the same reason.
   """
-  @spec start_link(name, module, args, [option]) :: start_return
-  def start_link(name \\ nil, mod, args, opts \\ []) do
-    spawn_opts = Keyword.get(opts, :spawn, [])
+  @spec start_link(module, args, [option]) :: start_return
+  def start_link(mod, args, opts \\ []) do
+    name = reg_name(opts)
+    spawn_opts = Keyword.get(opts, :spawn_opt, [])
     init_args = [mod, name, self(), args, self(), opts]
     timeout = Keyword.get(opts, :timeout, :infinity)
     :proc_lib.start_link(__MODULE__, :init,  init_args, timeout, spawn_opts)
@@ -194,12 +196,13 @@ defmodule Core do
   the error logger if an exception is raised (and not rescued). A crash report
   is also sent when the process exits with an abnormal reason.
 
-  To atomically spawn and link to the process include the `:spawn` option
+  To atomically spawn and link to the process include the `:spawn_opt` option
   `:link`.
   """
-  @spec spawn(name, module, args, [option]) :: pid
-  def spawn(name \\ nil, mod, args, opts \\ []) do
-    spawn_opts = Keyword.get(opts, :spawn, [])
+  @spec spawn(module, args, [option]) :: pid
+  def spawn(mod, args, opts \\ []) do
+    name = reg_name(opts)
+    spawn_opts = Keyword.get(opts, :spawn_opt, [])
     init_args =  [mod, name, nil, args,  nil, opts]
     :proc_lib.spawn_opt(__MODULE__, :init, init_args, spawn_opts)
   end
@@ -214,9 +217,10 @@ defmodule Core do
   A processes created with this function should exit when its parent does and
   with the same reason.
   """
-  @spec spawn_link(name | nil, module, any, [option]) :: pid
-  def spawn_link(name \\ nil, mod, args, opts \\ []) do
-    spawn_opts = Keyword.get(opts, :spawn, [])
+  @spec spawn_link(module, any, [option]) :: pid
+  def spawn_link(mod, args, opts \\ []) do
+    name = reg_name(opts)
+    spawn_opts = Keyword.get(opts, :spawn_opt, [])
     init_args =  [mod, name, self(), args, nil, opts]
     :proc_lib.spawn_opt(__MODULE__, :init, init_args, [:link | spawn_opts])
   end
@@ -598,6 +602,22 @@ defmodule Core do
   ## internal
 
   ## init
+
+  defp reg_name([{ :local, name } | _opts]) when is_atom(name), do: name
+  defp reg_name([{ :global, _global_name } = name | _opts]), do: name
+
+  defp reg_name([{ :via, { mod, via_name } } | _opts]) when is_atom(mod) do
+    { :via, mod, via_name }
+  end
+
+  defp reg_name([{ key, _ } = name | _opts])
+      when key in [:local, :global, :via] do
+    raise ArgumentError, message: "invalid name: #{inspect(name)}"
+  end
+
+  defp reg_name([_opt | opts]), do: reg_name(opts)
+
+  defp reg_name([]), do: nil
 
   defp do_init(mod, name, parent, args, starter, opts) do
     case register(name) do

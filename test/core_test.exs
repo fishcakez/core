@@ -48,7 +48,7 @@ defmodule CoreTest do
     fun = fn(_parent, _debug) ->
       :timer.sleep(5000)
     end
-    assert { :error, :timeout } = Core.start_link(nil, CoreTest, fun,
+    assert { :error, :timeout } = Core.start_link(CoreTest, fun,
       [{ :timeout, 1 }]), "didn't timeout"
     assert TestIO.binread() === <<>>
   end
@@ -92,12 +92,12 @@ defmodule CoreTest do
       Core.init_ack()
       close()
     end
-    name = :base_start_link
-    assert { :ok, pid1 } = Core.start_link(name, CoreTest, fun)
-    assert Core.whereis(name) === pid1
+    opts = [local: :base_start_link]
+    assert { :ok, pid1 } = Core.start_link(CoreTest, fun, opts)
+    assert Core.whereis(:base_start_link) === pid1
     trap = Process.flag(:trap_exit, true)
-    assert { :error, { :already_started, ^pid1 } } = Core.start_link(name,
-      CoreTest, fun)
+    assert { :error, { :already_started, ^pid1 } } = Core.start_link(CoreTest,
+      fun, opts)
     assert_receive { :EXIT, _pid2, :normal }, 200,
       "already started did not exit normally"
     Process.flag(:trap_exit, trap)
@@ -110,12 +110,12 @@ defmodule CoreTest do
       Core.init_ack()
       close()
     end
-    name = { :global, :base_start_link }
-    assert { :ok, pid1 } = Core.start_link(name, CoreTest, fun)
-    assert Core.whereis(name) === pid1
+    opts = [global: :base_start_link]
+    assert { :ok, pid1 } = Core.start_link(CoreTest, fun, opts)
+    assert Core.whereis({ :global, :base_start_link }) === pid1
     trap = Process.flag(:trap_exit, true)
-    assert { :error, { :already_started, ^pid1 } } = Core.start_link(name,
-      CoreTest, fun)
+    assert { :error, { :already_started, ^pid1 } } = Core.start_link(CoreTest,
+      fun, opts)
     assert_receive { :EXIT, _pid2, :normal }, 200,
       "already started did not exit normally"
     Process.flag(:trap_exit, trap)
@@ -128,12 +128,12 @@ defmodule CoreTest do
       Core.init_ack()
       close()
     end
-    name = { :via, :global, :base_start_link_via }
-    assert { :ok, pid1 } = Core.start_link(name, CoreTest, fun)
-    assert Core.whereis(name) === pid1
+    opts = [{ :via, { :global, :base_start_link_via } }]
+    assert { :ok, pid1 } = Core.start_link(CoreTest, fun, opts)
+    assert Core.whereis({ :via, :global, :base_start_link_via }) === pid1
     trap = Process.flag(:trap_exit, true)
-    assert { :error, { :already_started, ^pid1 } } = Core.start_link(name,
-      CoreTest, fun)
+    assert { :error, { :already_started, ^pid1 } } = Core.start_link(CoreTest,
+      fun, opts)
     assert_receive { :EXIT, _pid2, :normal }, 200,
       "already started did not exit normally"
     Process.flag(:trap_exit, trap)
@@ -159,7 +159,7 @@ defmodule CoreTest do
     fun = fn(_parent, _debug) ->
       :timer.sleep(5000)
     end
-    assert { :error, :timeout } = Core.start(nil, CoreTest, fun,
+    assert { :error, :timeout } = Core.start(CoreTest, fun,
       [{ :timeout, 1 }]), "didn't timeout"
     assert TestIO.binread() === <<>>
   end
@@ -170,11 +170,11 @@ defmodule CoreTest do
       Core.init_ack()
       close()
     end
-    name = :base_start
-    assert { :ok, pid1 } = Core.start(name, CoreTest, fun)
-    assert Core.whereis(name) === pid1
-    assert { :error, { :already_started, ^pid1 } } = Core.start_link(name,
-      CoreTest, fun)
+    opts = [local: :base_start]
+    assert { :ok, pid1 } = Core.start(CoreTest, fun, opts)
+    assert Core.whereis(:base_start) === pid1
+    assert { :error, { :already_started, ^pid1 } } = Core.start_link(CoreTest,
+      fun, opts)
     assert close(pid1) === :normal
     assert TestIO.binread() === <<>>
   end
@@ -186,7 +186,7 @@ defmodule CoreTest do
       Core.init_ack()
       close()
     end
-    assert { :ok, pid } = Core.start(nil, CoreTest, fun, [{ :spawn, [:link] }])
+    assert { :ok, pid } = Core.start(CoreTest, fun, [{ :spawn_opt, [:link] }])
     assert_received { :parent, ^pid }, "parent not self()"
     assert linked?(pid), "child not linked"
     assert :normal === close(pid), "close failed"
@@ -312,8 +312,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :init_error
     Process.flag(:trap_exit, trap)
@@ -341,8 +340,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :normal
     Process.flag(:trap_exit, trap)
@@ -358,8 +356,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === :shutdown
     Process.flag(:trap_exit, trap)
@@ -375,8 +372,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
     assert reason === { :shutdown, nil }
     Process.flag(:trap_exit, trap)
@@ -392,10 +388,10 @@ defmodule CoreTest do
       close()
     end
     name = :base_spawn_link
-    assert pid1 = Core.spawn_link(name, CoreTest, fun)
+    assert pid1 = Core.spawn_link(CoreTest, fun, local: name)
     assert_receive { :registered, ^pid1 }, 200, "did not register"
     assert Core.whereis(name) === pid1
-    assert pid2 = Core.spawn_link(name, CoreTest, fun)
+    assert pid2 = Core.spawn_link(CoreTest, fun, local: name)
     ref = Process.monitor(pid2)
     assert_receive { :DOWN, ^ref, _, _, :normal }, 200,
       "already registered did not exit with reason :normal"
@@ -429,10 +425,10 @@ defmodule CoreTest do
       close()
     end
     name = :base_spawn
-    assert pid1 = Core.spawn(name, CoreTest, fun)
+    assert pid1 = Core.spawn(CoreTest, fun, local: name)
     assert_receive { :registered, ^pid1 }, 200, "did not register"
     assert Core.whereis(name) === pid1
-    assert pid2 = Core.spawn(name, CoreTest, fun)
+    assert pid2 = Core.spawn(CoreTest, fun, local: name)
     ref = Process.monitor(pid2)
     assert_receive { :DOWN, ^ref, _, _, :normal }, 200,
       "already registered did not exit with reason :normal"
@@ -448,7 +444,7 @@ defmodule CoreTest do
       Core.init_ack()
       close()
     end
-    pid = Core.spawn(nil, CoreTest, fun, [{ :spawn, [:link] }])
+    pid = Core.spawn(CoreTest, fun, [{ :spawn_opt, [:link] }])
     assert linked?(pid), "child not linked"
     assert :normal === close(pid), "close failed"
     assert TestIO.binread() === <<>>
@@ -534,8 +530,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :error
     Process.flag(:trap_exit, trap)
@@ -563,8 +558,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :normal
     Process.flag(:trap_exit, trap)
@@ -580,8 +574,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === :shutdown
     Process.flag(:trap_exit, trap)
@@ -597,8 +590,7 @@ defmodule CoreTest do
       :timer.sleep(5000)
     end
     trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(nil, CoreTest, fun,
-      [{ :debug, [{ :log, 10 }] }])
+    pid = Core.spawn_link(CoreTest, fun, [{ :debug, [{ :log, 10 }] }])
     assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
     assert reason === { :shutdown, nil }
     Process.flag(:trap_exit, trap)
@@ -756,7 +748,7 @@ defmodule CoreTest do
       end
       close()
     end
-    { :ok, pid } = Core.start_link(:call_local, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, local: :call_local)
     assert :hi === Core.call(:call_local, __MODULE__, :hello, 1000)
     close(pid)
     assert TestIO.binread() === <<>>
@@ -771,7 +763,7 @@ defmodule CoreTest do
       end
       close()
     end
-    { :ok, pid } = Core.start_link(:call_local2, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, local: :call_local2)
     assert :hi === Core.call({ :call_local2, node() }, __MODULE__, :hello, 1000)
     close(pid)
     assert TestIO.binread() === <<>>
@@ -787,7 +779,7 @@ defmodule CoreTest do
       close()
     end
     name = { :global, :call_global }
-    { :ok, pid } = Core.start_link(name, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, [name])
     assert :hi === Core.call(name, __MODULE__, :hello, 1000)
     close(pid)
     assert TestIO.binread() === <<>>
@@ -803,7 +795,7 @@ defmodule CoreTest do
       close()
     end
     name = { :via, :global, :call_via }
-    { :ok, pid } = Core.start_link(name, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, via: { :global, :call_via })
     assert :hi === Core.call(name, __MODULE__, :hello, 1000)
     close(pid)
     assert TestIO.binread() === <<>>
@@ -1036,7 +1028,7 @@ defmodule CoreTest do
       end
       close()
     end
-    { :ok, pid } = Core.start_link(:cast_local, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, local: :cast_local)
     assert :ok === Core.cast(:cast_local, __MODULE__, :hello)
     assert_receive { :hi, ^pid }, 200, "cast was not received"
     close(pid)
@@ -1052,7 +1044,7 @@ defmodule CoreTest do
       end
       close()
     end
-    { :ok, pid } = Core.start_link(:cast_local2, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, local: :cast_local2)
     assert :ok === Core.cast({ :cast_local2, node() }, __MODULE__, :hello)
     assert_receive { :hi, ^pid }, 200, "cast was not received"
     close(pid)
@@ -1069,7 +1061,7 @@ defmodule CoreTest do
      close()
     end
     name = { :global, :cast_global }
-    { :ok, pid } = Core.start_link(name, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, [name])
     assert :ok === Core.cast(name, __MODULE__, :hello)
     assert_receive { :hi, ^pid }, 200, "cast was not received"
     close(pid)
@@ -1086,7 +1078,7 @@ defmodule CoreTest do
       close()
     end
     name = { :via, :global, :cast_via }
-    { :ok, pid } = Core.start_link(name, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, via: { :global, :cast_via })
     assert :ok === Core.cast(name, __MODULE__, :hello)
     assert_receive { :hi, ^pid }, 200, "cast was not received"
     close(pid)
@@ -1136,7 +1128,7 @@ defmodule CoreTest do
       end
       close()
     end
-    { :ok, pid } = Core.start_link(:send_local, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, local: :send_local)
     assert { __MODULE__, :hello } === Core.send(:send_local,
       { __MODULE__, :hello })
     assert_receive { :hi, ^pid }, 200, "message was not received"
@@ -1153,7 +1145,7 @@ defmodule CoreTest do
       end
       close()
     end
-    { :ok, pid } = Core.start_link(:send_local2, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, local: :send_local2)
     assert { __MODULE__, :hello}  === Core.send({ :send_local2, node() },
       { __MODULE__, :hello })
     assert_receive { :hi, ^pid }, 200, "message was not received"
@@ -1171,7 +1163,7 @@ defmodule CoreTest do
      close()
     end
     name = { :global, :send_global }
-    { :ok, pid } = Core.start_link(name, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, [name])
     assert { __MODULE__, :hello } === Core.send(name,{ __MODULE__, :hello })
     assert_receive { :hi, ^pid }, 200, "message was not received"
     close(pid)
@@ -1188,7 +1180,7 @@ defmodule CoreTest do
       close()
     end
     name = { :via, :global, :send_via }
-    { :ok, pid } = Core.start_link(name, CoreTest, fun)
+    { :ok, pid } = Core.start_link(CoreTest, fun, via: { :global, :send_via })
     assert { __MODULE__, :hello }  === Core.send(name, { __MODULE__, :hello })
     assert_receive { :hi, ^pid }, 200, "message was not received"
     close(pid)

@@ -73,7 +73,7 @@ defmodule Core.Sys do
       else
         # assume is stacktrace
         _formatted_stack ->
-          Exception.normalize(error)
+          Exception.normalize(:error, error)
       rescue
         # definitely not a stacktrace
         _exception ->
@@ -561,7 +561,7 @@ defmodule Core.Sys do
         raise exception, []
       # raised in a direct :sys module, normalize and raise.
       { :error, { :callback_failed, action, { :error, error } } } ->
-        exception = Exception.normalize(error)
+        exception = Exception.normalize(:error, error)
         raise Core.Sys.CallbackError, action: action, reason: exception
       # raised in a direct :sys  module, make exception and raise.
       { :error, { :callback_failed, action, { :throw, value } } } ->
