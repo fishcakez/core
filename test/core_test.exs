@@ -1,6 +1,6 @@
 Code.require_file "test_helper.exs", __DIR__
 
-defmodule __MODULE__ do
+defmodule CoreTest do
   use ExUnit.Case
 
   use Core.Behaviour
