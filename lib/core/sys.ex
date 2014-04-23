@@ -387,14 +387,6 @@ defmodule Core.Sys do
   @doc false
   @spec message(__MODULE__, data, Core.parent, Core.Debug.t, any, Core.from) ::
     no_return
-  def message(mod, data, parent, debug, :get_state, from) do
-    handle_get_state([mod | data], parent, debug, from)
-  end
-
-  def message(mod, data, parent, debug, { :replace_state, replace}, from) do
-    handle_replace_state([mod | data], parent, debug, replace, from)
-  end
-
   def message(mod, data, parent, debug, msg, from) do
     :sys.handle_system_msg(msg, from, parent, __MODULE__, debug, [mod | data])
   end
@@ -664,40 +656,6 @@ defmodule Core.Sys do
 
   defp get_mod_data(_mod, status_data) do
     get(status_data, 'State', status_data)
-  end
-
-  # Mimic handling of 17.0. Once 17.0 is out this function will disappear.
-  defp handle_get_state([mod | data], parent, debug, from) do
-    try do
-      system_get_state([mod | data])
-    else
-      { :ok, _state } = response ->
-        Core.reply(from, response)
-        system_continue(parent, debug, [mod | data])
-    catch
-      class, reason ->
-        action = { __MODULE__, :get_state }
-        reason2 = { :callback_failed, action, { class, reason } }
-        Core.reply(from, { :error, reason2 })
-        system_continue(parent, debug, [mod | data])
-    end
-  end
-
-  # Mimic handling of 17.0. Once 17.0 is out this function will disappear.
-  defp handle_replace_state([mod | data], parent, debug, replace, from) do
-    try do
-      { :ok, _state, _mod_data } = system_replace_state(replace, [mod | data])
-    else
-      { :ok, state, [mod | data] } ->
-        Core.reply(from, { :ok, state })
-        system_continue(parent, debug, [mod | data])
-    catch
-      class, reason ->
-        action = { __MODULE__, :replace_state }
-        reason2 = { :callback_failed, action, { class, reason } }
-        Core.reply(from, { :error, reason2 })
-        system_continue(parent, debug, [mod | data])
-    end
   end
 
   defp format_base_status(sys_status, parent, mod, debug) do
