@@ -3,14 +3,22 @@ defmodule Core.Mixfile do
 
   def project do
     [ app: :core,
-      version: "0.1.0",
-      elixir: "~> 0.13.0-dev",
+      version: "0.13.0",
+      elixir: "~> 0.13.0",
+      description: "Library for selective receive OTP processes",
+      package: package(),
       deps: deps(Mix.env) ]
   end
 
   def application do
     [ applications: [],
       mod: { Core.App, [] }]
+  end
+
+  defp package() do
+    [ contributors: ["James Fish"],
+      licenses: ["Apache 2.0"],
+      links: [{ "Github", "https://github.com/fishcakez/core" }] ]
   end
 
   defp deps(:prod) do
