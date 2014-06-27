@@ -328,7 +328,7 @@ defmodule Core.SysTest do
     # header tuple, second is general information in :data tuple supplied by all
     # callbacks, and third is specific to the callback.
     assert [{ :header, header }, { :data, data1 }, { :data, data2 }] = status
-    assert header === String.to_char_list!("Status for " <>
+    assert header === List.from_char_data!("Status for " <>
       "#{inspect(__MODULE__)} #{inspect(pid)}")
     assert List.keyfind(data1, 'Status', 0) === { 'Status', :running }
     assert List.keyfind(data1, 'Parent', 0) === { 'Parent', self() }
@@ -1437,7 +1437,7 @@ defmodule Core.SysTest do
   defp inspect_erl(term) do
     :io_lib.format('~p', [term])
       |> List.flatten()
-      |> String.from_char_list!()
+      |> String.from_char_data!()
   end
 
 end

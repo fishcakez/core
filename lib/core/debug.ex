@@ -451,11 +451,13 @@ defmodule Core.Debug do
   end
 
   defp format_raw_log(raw_log, device) do
-    _ = lc { event, state, print } inlist raw_log do
-      print.(device, event, state)
-    end
+    Enum.each(raw_log, &print_raw_event(device, &1))
     { input, output } = StringIO.contents(device)
     [input | output]
+  end
+
+  defp print_raw_event(device, { event, state, print }) do
+    print.(device, event, state)
   end
 
   ## stats
@@ -473,7 +475,7 @@ defmodule Core.Debug do
     format = '~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B'
     args = [year, month, day, hour, min, sec]
     :io_lib.format(format, args)
-      |> iolist_to_binary()
+      |> iodata_to_binary()
   end
 
   ## print

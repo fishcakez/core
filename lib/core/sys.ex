@@ -659,7 +659,7 @@ defmodule Core.Sys do
   end
 
   defp format_base_status(sys_status, parent, mod, debug) do
-    header = String.to_char_list!("Status for #{inspect(mod)} #{Core.format()}")
+    header = List.from_char_data!("Status for #{inspect(mod)} #{Core.format()}")
     log = get_status_log(debug)
     stats = get_status_stats(debug)
     data = [{ 'Status', sys_status }, { 'Parent', parent },

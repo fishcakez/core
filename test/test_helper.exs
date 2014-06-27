@@ -13,14 +13,15 @@ defmodule TestIO do
     stdio = Process.group_leader()
     { :ok, stringio } = StringIO.open(<<>>)
     Process.group_leader(self(), stringio)
-    { :ok, [{ :stdio, stdio }, { StringIO, stringio }] }
+    { :ok, %{:stdio => stdio, StringIO => stringio} }
   end
 
   def teardown(context) do
-    stringio = Keyword.get(context, StringIO)
-    stdio = Keyword.get(context, :stdio)
+    stringio = Map.fetch!(context, StringIO)
+    stdio = Map.fetch!(context, :stdio)
     Process.group_leader(self(), stdio)
     StringIO.close(stringio)
+    :ok
   end
 
   def teardown_all() do
