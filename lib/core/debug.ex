@@ -278,7 +278,7 @@ defmodule Core.Debug do
   def stats_from_raw(:no_statistics), do: nil
 
   def stats_from_raw(raw_stats) do
-    stats = Map.new(raw_stats)
+    stats = Enum.into(raw_stats, Map.new())
     # rename messages_in/out for convenience
     { msg_in, stats } = Map.pop(stats, :messages_in)
     { msg_out, stats } = Map.pop(stats, :messages_out)
