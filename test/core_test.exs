@@ -242,65 +242,13 @@ defmodule CoreTest do
     assert_receive { :EXIT, ^pid, :init_error }, 200, "init_stop did not exit"
     Process.flag(:trap_exit, trap)
     refute_received { :ack, ^pid, _ }, "init_ack sent"
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
-      "   Arguments: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: nil\n" <>
-      "   EXIT: :init_error\n" <>
-      "\n"
-    assert TestIO.binread() === report
-  end
-
-  test "spawn_link with exception and stack init_stop" do
-    exception = ArgumentError[message: "hello"]
-    stack = try do
-      throw(:hi)
-    catch
-      :hi ->
-        System.stacktrace()
-    end
-    fun = fn(parent, debug) ->
-      Core.init_stop(__MODULE__, parent, debug, nil, { exception, stack })
-      :timer.sleep(5000)
-    end
-    trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(__MODULE__, fun)
-    assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
-    assert reason === { exception, stack }
-    Process.flag(:trap_exit, trap)
-    refute_received { :ack, ^pid, _ }, "init_ack sent"
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is raising an exception\n" <>
-      "   Arguments: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: nil\n" <>
-      "   (ArgumentError) hello\n" <>
-      Exception.format_stacktrace(stack) <>
-      "\n"
-    assert TestIO.binread() === report
-  end
-
-  test "spawn_link with exception and nil stack init_stop" do
-    exception = ArgumentError[message: "hello"]
-    fun = fn(parent, debug) ->
-      Core.init_stop(__MODULE__, parent, debug, nil, { exception, nil })
-      :timer.sleep(5000)
-    end
-    trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(__MODULE__, fun)
-    assert_receive { :EXIT, ^pid, reason }, 200, "init_stop did not exit"
-    assert { ^exception, nil } = reason
-      "stacktrace not from init_stop"
-    Process.flag(:trap_exit, trap)
-    refute_received { :ack, ^pid, _ }, "init_ack sent"
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
-      "   Arguments: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: nil\n" <>
-      "   EXIT: #{inspect({ exception, nil })}\n" <>
-      "\n"
+    report = "** #{erl_inspect(__MODULE__)} #{erl_inspect(pid)} is terminating\n" <>
+      "** Last event was #{erl_inspect(nil)}\n" <>
+      "** Arguments == #{erl_inspect(nil)}\n" <>
+      "** Process   == #{erl_inspect(pid)}\n" <>
+      "** Parent    == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [:init_error]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -318,12 +266,13 @@ defmodule CoreTest do
     Process.flag(:trap_exit, trap)
     refute_received { :ack, ^pid, _ }, "init_ack sent"
     output = TestIO.binread()
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
-      "   Arguments: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: :test_event\n" <>
-      "   EXIT: :init_error\n\n"
+    report = "** #{erl_inspect(__MODULE__)} #{erl_inspect(pid)} is terminating\n" <>
+      "** Last event was #{erl_inspect(:test_event)}\n" <>
+      "** Arguments == #{erl_inspect(nil)}\n" <>
+      "** Process   == #{erl_inspect(pid)}\n" <>
+      "** Parent    == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
     assert String.contains?(output, [report])
     log = "** Core.Debug #{inspect(pid)} event log:\n" <>
       "** Core.Debug #{inspect(pid)} :test_event\n\n"
@@ -460,64 +409,13 @@ defmodule CoreTest do
     pid = Core.spawn_link(__MODULE__, fun)
     assert_receive { :EXIT, ^pid, :error }, 200, "stop did not exit"
     Process.flag(:trap_exit, trap)
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
-      "   State: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: nil\n" <>
-      "   EXIT: :error\n" <>
-      "\n"
-    assert TestIO.binread() === report
-  end
-
-  test "stop with exception and stack" do
-    exception = ArgumentError[message: "hello"]
-    stack = try do
-      throw(:hi)
-    catch
-      :hi ->
-        System.stacktrace()
-    end
-    fun = fn(parent, debug) ->
-      Core.init_ack()
-      Core.stop(__MODULE__, nil, parent, debug, { exception, stack })
-      :timer.sleep(5000)
-    end
-    trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(__MODULE__, fun)
-    assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
-    assert reason === { exception, stack }
-    Process.flag(:trap_exit, trap)
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is raising an exception\n" <>
-      "   State: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: nil\n" <>
-      "   (ArgumentError) hello\n" <>
-      Exception.format_stacktrace(stack) <>
-      "\n"
-    assert TestIO.binread() === report
-  end
-
-  test "stop with exception and nil stack" do
-    exception = ArgumentError[message: "hello"]
-    fun = fn(parent, debug) ->
-      Core.init_ack()
-      Core.stop(__MODULE__, nil, parent, debug, { exception, nil })
-      :timer.sleep(5000)
-    end
-    trap = Process.flag(:trap_exit, :true)
-    pid = Core.spawn_link(__MODULE__, fun)
-    assert_receive { :EXIT, ^pid, reason }, 200, "stop did not exit"
-    assert { ^exception, nil } = reason
-    Process.flag(:trap_exit, trap)
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
-      "   State: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: nil\n" <>
-      "   EXIT: #{inspect({ exception, nil })}\n" <>
-      "\n"
+    report = "** #{erl_inspect(__MODULE__)} #{erl_inspect(pid)} is terminating\n" <>
+      "** Last event was #{erl_inspect(nil)}\n"<>
+      "** State   == #{erl_inspect(nil)}\n" <>
+      "** Process == #{erl_inspect(pid)}\n" <>
+      "** Parent  == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [:error]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -535,12 +433,13 @@ defmodule CoreTest do
     assert reason === :error
     Process.flag(:trap_exit, trap)
     output = TestIO.binread()
-    report = "** #{inspect(__MODULE__)} #{inspect(pid)} is terminating\n" <>
-      "   State: nil\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   Last Event: :test_event\n" <>
-      "   EXIT: :error\n\n"
+    report = "** #{erl_inspect(__MODULE__)} #{erl_inspect(pid)} is terminating\n" <>
+      "** Last event was #{erl_inspect(:test_event)}\n"<>
+      "** State   == #{erl_inspect(nil)}\n" <>
+      "** Process == #{erl_inspect(pid)}\n" <>
+      "** Parent  == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
     assert String.contains?(output, [report])
     log = "** Core.Debug #{inspect(pid)} event log:\n" <>
       "** Core.Debug #{inspect(pid)} :test_event\n\n"
@@ -610,13 +509,12 @@ defmodule CoreTest do
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
     Process.flag(:trap_exit, trap)
-    report = "** Core #{inspect(pid)} is raising an exception\n" <>
-      "   Module: #{inspect(__MODULE__)}\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   (ArgumentError) hello\n" <>
-      Exception.format_stacktrace(stack) <>
-      "\n"
+    report = "** Core #{erl_inspect(pid)} is terminating\n" <>
+      "** Module  == #{erl_inspect(__MODULE__)}\n" <>
+      "** Process == #{erl_inspect(pid)}\n" <>
+      "** Parent  == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n" <>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -633,13 +531,12 @@ defmodule CoreTest do
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
     Process.flag(:trap_exit, trap)
-    report = "** Core #{inspect(pid)} is raising an exception\n" <>
-      "   Module: #{inspect(__MODULE__)}\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   (Core.UncaughtThrowError) uncaught throw: :thrown\n" <>
-      Exception.format_stacktrace(stack) <>
-      "\n"
+    report = "** Core #{erl_inspect(pid)} is terminating\n" <>
+      "** Module  == #{erl_inspect(__MODULE__)}\n" <>
+      "** Process == #{erl_inspect(pid)}\n" <>
+      "** Parent  == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -672,13 +569,12 @@ defmodule CoreTest do
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
     Process.flag(:trap_exit, trap)
-    report = "** Core #{inspect(pid)} is raising an exception\n" <>
-      "   Module: #{inspect(__MODULE__)}\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   (ArgumentError) hello\n" <>
-      Exception.format_stacktrace(stack) <>
-      "\n"
+    report = "** Core #{erl_inspect(pid)} is terminating\n" <>
+      "** Module  == #{erl_inspect(__MODULE__)}\n" <>
+      "** Process == #{erl_inspect(pid)}\n" <>
+      "** Parent  == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -698,13 +594,12 @@ defmodule CoreTest do
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
     Process.flag(:trap_exit, trap)
-    report = "** Core #{inspect(pid)} is raising an exception\n" <>
-      "   Module: #{inspect(__MODULE__)}\n" <>
-      "   Pid: #{inspect(pid)}\n" <>
-      "   Parent: #{inspect(self())}\n" <>
-      "   (Core.UncaughtThrowError) uncaught throw: :thrown\n" <>
-      Exception.format_stacktrace(stack) <>
-      "\n"
+    report = "** Core #{erl_inspect(pid)} is terminating\n" <>
+      "** Module  == #{erl_inspect(__MODULE__)}\n" <>
+      "** Process == #{erl_inspect(pid)}\n" <>
+      "** Parent  == #{erl_inspect(self())}\n" <>
+      "** Reason for termination == \n"<>
+      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -1245,6 +1140,10 @@ defmodule CoreTest do
       500 ->
         exit(:timeout)
     end
+  end
+
+  defp erl_inspect(term) do
+    String.from_char_data!(:io_lib.format('~p', [term]))
   end
 
 end

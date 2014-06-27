@@ -619,6 +619,13 @@ defmodule Core do
 
   defp reg_name([]), do: nil
 
+  defp format_name(name \\ get_name())
+
+  defp format_name(pid) when is_pid(pid), do: pid
+  defp format_name(name) when is_atom(name), do: name
+  defp format_name({:global, name}), do: name
+  defp format_name({:via, _mod, name}), do: name
+
   defp do_init(mod, name, parent, args, starter, opts) do
     case register(name) do
       :yes ->
@@ -690,73 +697,23 @@ defmodule Core do
     exit(reason)
   end
 
-  defp report_base_stop(mod, parent, { exception, stack }) do
-    erl_format = '** ~ts ~ts is raising an exception~n   Module: ~ts~n   Pid: ~ts~n   Parent: ~ts~n   (~ts) ~ts~n~ts'
-    args = [inspect(__MODULE__), format(), inspect(mod), inspect(self()),
-      inspect(parent), inspect(elem(exception, 0)), exception.message,
-      Exception.format_stacktrace(stack)]
+  defp report_base_stop(mod, parent, reason) do
+    erl_format = '~i** Core ~p is terminating~n** Module  == ~p~n** Process == ~p~n** Parent  == ~p~n** Reason for termination == ~n** ~p~n'
+    args = [{__MODULE__, :stop}, format_name(), mod, self(), parent, reason]
     report(erl_format, args)
   end
 
-  # Must guard against nil stack, Exception.format_stacktrace/1 will format its
-  # own generated stacktrace with nil stack.
-  defp report_init_stop(mod, parent, args, { exception, stack } = reason, event)
-      when is_exception(exception) and stack !== nil do
-    try do
-      Exception.format_stacktrace(stack)
-    else
-      formatted_stack ->
-        erl_format = '** ~ts ~ts is raising an exception~n   Arguments: ~ts~n   Pid: ~ts~n   Parent: ~ts~n   Last Event: ~ts~n   (~ts) ~ts~n~ts'
-        args = [inspect(mod), format(), inspect(args), inspect(self()),
-          inspect(parent), inspect(event), inspect(elem(exception, 0)),
-          exception.message, formatted_stack]
-        report(erl_format, args)
-    rescue
-      # Not a stacktrace!
-      _ ->
-        report_init_exit(mod, parent, args, reason, event)
-    end
-  end
-
-  defp report_init_stop(mod, parents, args, reason, event) do
-    report_init_exit(mod, parents, args, reason, event)
-  end
-
-  defp report_init_exit(mod, parent, args, reason, event) do
-    erl_format = '** ~ts ~ts is terminating~n   Arguments: ~ts~n   Pid: ~ts~n   Parent: ~ts~n   Last Event: ~ts~n   EXIT: ~ts~n'
-    args = [inspect(mod), format(), inspect(args), inspect(self()),
-          inspect(parent), inspect(event), inspect(reason)]
+  defp report_init_stop(mod, parent, args, reason, event) do
+    erl_format = '~i** ~p ~p is terminating~n** Last event was ~p~n** Arguments == ~p~n** Process   == ~p~n** Parent    == ~p~n** Reason for termination == ~n** ~p~n'
+    args = [{__MODULE__, mod, :init_stop}, mod, format_name(), event, args, self(), parent,
+      reason]
     report(erl_format, args)
   end
 
-  # Must guard against nil stack, Exception.format_stacktrace/1 will format its
-  # own generated stacktrace with nil stack.
-  defp report_stop(mod, state, parent, { exception, stack } = reason, event)
-      when is_exception(exception) and stack !== nil do
-    try do
-      Exception.format_stacktrace(stack)
-    else
-      formatted_stack ->
-        erl_format = '** ~ts ~ts is raising an exception~n   State: ~ts~n   Pid: ~ts~n   Parent: ~ts~n   Last Event: ~ts~n   (~ts) ~ts~n~ts'
-        args = [inspect(mod), format(), inspect(state), inspect(self()),
-          inspect(parent), inspect(event), inspect(elem(exception, 0)),
-          exception.message, formatted_stack]
-        report(erl_format, args)
-    rescue
-      # Not a stacktrace!
-      _ ->
-        report_exit(mod, state, parent, reason, event)
-    end
-  end
-
-  defp report_stop(mod, state, parents, reason, event) do
-    report_exit(mod, state, parents, reason, event)
-  end
-
-  defp report_exit(mod, state, parent, reason, event) do
-    erl_format = '** ~ts ~ts is terminating~n   State: ~ts~n   Pid: ~ts~n   Parent: ~ts~n   Last Event: ~ts~n   EXIT: ~ts~n'
-    args = [inspect(mod), format(), inspect(state), inspect(self()),
-          inspect(parent), inspect(event), inspect(reason)]
+  defp report_stop(mod, state, parent, reason, event) do
+    erl_format = '~i** ~p ~p is terminating~n** Last event was ~p~n** State   == ~p~n** Process == ~p~n** Parent  == ~p~n** Reason for termination == ~n** ~p~n'
+    args = [{__MODULE__, mod, :stop}, mod, format_name(), event, state, self(), parent,
+      reason]
     report(erl_format, args)
   end
 
