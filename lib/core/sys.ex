@@ -47,53 +47,47 @@ defmodule Core.Sys do
 
   ## exceptions
 
-  defexception CallbackError, [action: nil, reason: nil] do
-    def message(exception) do
-      case normalize(exception.reason) do
-        exception2 when is_exception(exception2) ->
-          "#{format_action(exception.action)} raised an exception\n" <>
-          "   (#{inspect(elem(exception2, 0))}) #{exception2.message}"
-        { :EXIT, reason } ->
-          "#{format_action(exception.action)} exited with reason: " <>
-          "#{inspect(reason)}"
-      end
+  defmodule CallbackError do
+
+    defexception [action: nil, kind: nil, payload: nil, stacktrace: [],
+        message: "callback failed"]
+
+    def exception(opts) do
+      action = opts[:action]
+      kind = opts[:kind]
+      payload = opts[:payload]
+      stacktrace = Keyword.get(opts, :stacktrace, [])
+      message = "failure in " <> format_action(action) <> "\n" <>
+        format_reason(kind, payload, stacktrace)
+      %Core.Sys.CallbackError{action: action, kind: kind, payload: payload,
+        stacktrace: stacktrace, message: message}
     end
 
     defp format_action(nil), do: "unknown function"
     defp format_action(fun), do: inspect(fun)
 
-    defp normalize(exception) when is_exception(exception), do: exception
-    # Exception.format_stacktrace() will return a new stacktrace when
-    # stack is nil
-    defp normalize({ :EXIT, { _error, nil } } = reason), do: reason
-
-    defp normalize({ :EXIT, { error, stack } = reason }) do
-      try do
-        Exception.format_stacktrace(stack)
-      else
-        # assume is stacktrace
-        _formatted_stack ->
-          Exception.normalize(:error, error)
-      rescue
-        # definitely not a stacktrace
-        _exception ->
-          { :EXIT, reason }
-      end
+    defp format_reason(kind, payload, stacktrace) do
+      reason = Exception.format(kind, payload, stacktrace)
+      "    " <> Regex.replace(~r/\n/, reason, "\n    ")
     end
-
-    defp normalize({ :EXIT, _reason } = reason), do: reason
 
   end
 
-  defexception CatchLevelError, [level: nil] do
-    def message(exception) do
-      case exception.level do
-        0 ->
-          "process was not started by Core or did not use Core to hibernate"
-        # level is 3 or more
-        level ->
-          "Core.Sys loop was not entered by a tail call, #{level-2} catch(es)"
-      end
+  defmodule CatchLevelError do
+
+    defexception [level: nil, message: "catch level error"]
+
+    def exception(opts) do
+      level = Keyword.fetch!(opts, :level)
+      %Core.Sys.CatchLevelError{level: level, message: format_message(level)}
+    end
+
+    defp format_message(0) do
+      "process was not started by Core or did not use Core to hibernate"
+    end
+    # 3 levels is one extra catch
+    defp format_message(level) when level >= 3 do
+      "Core.Sys loop was not entered by a tail call, #{level-2} catch(es)"
     end
   end
 
@@ -262,12 +256,12 @@ defmodule Core.Sys do
     case state_call(process, { :change_code, mod, oldvsn, extra }, timeout) do
       :ok ->
         :ok
-      # direct :sys module raised an error/exited
-      { :error, { :EXIT, _ } = reason } ->
-        raise Core.Sys.CallbackError[reason: reason]
+      { :error, {:EXIT, reason } } ->
+        raise Core.Sys.CallbackError, [kind: :exit, payload: reason]
       # direct :sys module did not return { :ok, data }
       { :error, other } ->
-        raise Core.Sys.CallbackError[reason: MatchError[term: other]]
+        raise Core.Sys.CallbackError,
+          [kind: :error, payload: other]
     end
   end
 
@@ -412,19 +406,12 @@ defmodule Core.Sys do
     rescue
       # Callback failed in a callback of mod
       exception in [Core.Sys.CallbackError] ->
-        raise exception, []
-      exception ->
-        raise Core.Sys.CallbackError,
-          action: :erlang.make_fun(mod, :system_get_state, 1), reason: exception
+        raise exception
     catch
-      :throw, value ->
-        exception = Core.UncaughtThrowError[actual: value]
-        raise Core.Sys.CallbackError,
-          action: :erlang.make_fun(mod, :system_get_state, 1), reason: exception
-      :exit, reason ->
+      kind, payload ->
         raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_get_state, 1),
-          reason: { :EXIT, reason }
+          kind: kind, payload: payload, stacktrace: System.stacktrace()
     end
   end
 
@@ -438,21 +425,12 @@ defmodule Core.Sys do
     rescue
       # Callback failed in a callback of mod
       exception in [Core.Sys.CallbackError] ->
-        raise exception, []
-      exception ->
-        raise Core.Sys.CallbackError,
-          action: :erlang.make_fun(mod, :system_update_state, 2),
-          reason: exception
+        raise exception
     catch
-      :throw, value ->
-        exception = Core.UncaughtThrowError[actual: value]
+      kind, payload ->
         raise Core.Sys.CallbackError,
           action: :erlang.make_fun(mod, :system_update_state, 2),
-          reason: exception
-      :exit, reason ->
-        raise Core.Sys.CallbackError,
-          action: :erlang.make_fun(mod, :system_update_state, 2),
-          reason: { :EXIT, reason }
+          kind: kind, payload: payload, stacktrace: System.stacktrace()
     end
   end
 
@@ -465,22 +443,13 @@ defmodule Core.Sys do
       mod_data ->
         base_status ++ [{ :data, [{ 'Module data', mod_data }] }]
     rescue
-      exception ->
-        exception2 = Core.Sys.CallbackError[
-          action: :erlang.make_fun(mod, :system_get_data, 1),
-          reason: exception]
-        format_status_error(base_status, data, exception2)
+      exception in [Core.Sys.CallbackError] ->
+        format_status_error(base_status, data, exception)
     catch
-      :throw, value ->
-        exception = Core.UncaughtThrowError[actual: value]
-        exception2 = Core.Sys.CallbackError[
+      kind, payload ->
+        exception = Core.Sys.CallbackError.exception([
           action: :erlang.make_fun(mod, :system_get_data, 1),
-          reason: exception]
-        format_status_error(base_status, data, exception2)
-      :exit, reason ->
-        exception = Core.Sys.CallbackError[
-          action: :erlang.make_fun(mod, :system_get_data, 1),
-          reason: { :EXIT, reason }]
+          kind: kind, payload: payload, stacktrace: System.stacktrace()])
         format_status_error(base_status, data, exception)
     end
   end
@@ -496,22 +465,11 @@ defmodule Core.Sys do
       # Callback failed in a callback of mod.
       exception in [Core.Sys.CallbackError] ->
         code_change_error(exception)
-      exception ->
-        exception2 = Core.Sys.CallbackError[
-          action: :erlang.make_fun(mod, :system_change_data, 4),
-          reason: exception]
-        code_change_error(exception2)
     catch
-      :throw, value ->
-        exception = Core.UncaughtThrowError[actual: value]
-        exception2 = Core.Sys.CallbackError[
+      kind, payload ->
+        exception = Core.Sys.CallbackError.exception([
           action: :erlang.make_fun(mod, :system_change_data, 4),
-          reason: exception]
-        code_change_error(exception2)
-      :exit, reason ->
-        exception = Core.Sys.CallbackError[
-          action: :erlang.make_fun(mod, :system_change_data, 4),
-          reason: { :EXIT, reason }]
+          kind: kind, payload: payload, stacktrace: System.stacktrace()])
         code_change_error(exception)
     end
   end
@@ -548,20 +506,13 @@ defmodule Core.Sys do
       :ok ->
         :ok
       # exception raised by this module, raise it.
-      { :error, { :callback_failed, { __MODULE__, _ }, { :error, exception } } }
-          when is_exception(exception) ->
-        raise exception, []
-      # raised in a direct :sys module, normalize and raise.
-      { :error, { :callback_failed, action, { :error, error } } } ->
-        exception = Exception.normalize(:error, error)
-        raise Core.Sys.CallbackError, action: action, reason: exception
-      # raised in a direct :sys  module, make exception and raise.
-      { :error, { :callback_failed, action, { :throw, value } } } ->
-        exception = Core.UncaughtThrowError[actual: value]
-        raise Core.Sys.CallbackError, action: action, reason: exception
-      # raised in a direct :sys module, raise with { :EXIT, reason }
-      { :error, { :calback_failed, action, { :exit, reason } } } ->
-        raise Core.Sys.CallbackError, action: action, reason: { :EXIT, reason }
+      { :error, { :callback_failed, { __MODULE__, _ },
+            { :error, %Core.Sys.CallbackError{} = exception } } } ->
+        raise exception
+      # raise in a direct :sys module
+      { :error, { :callback_failed, action, { kind, payload } } } ->
+        raise Core.Sys.CallbackError, action: action, kind: kind,
+          payload: payload
       state ->
         state
     end
@@ -588,7 +539,7 @@ defmodule Core.Sys do
         parse_status_data(pid, __MODULE__, pdict, sys_status, parent,
           status_data)
       { :callback_failed, { __MODULE__, _ }, { :error, exception } } ->
-        raise exception, []
+        raise exception
     end
   end
 
@@ -659,7 +610,7 @@ defmodule Core.Sys do
   end
 
   defp format_base_status(sys_status, parent, mod, debug) do
-    header = List.from_char_data!("Status for #{inspect(mod)} #{Core.format()}")
+    header = String.to_char_list("Status for #{inspect(mod)} #{Core.format()}")
     log = get_status_log(debug)
     stats = get_status_stats(debug)
     data = [{ 'Status', sys_status }, { 'Parent', parent },

@@ -1,7 +1,7 @@
 defmodule Core.Debug.Supervisor do
   @moduledoc false
 
-  use Supervisor.Behaviour
+  use Supervisor
 
   ## api
 

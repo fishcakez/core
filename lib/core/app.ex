@@ -1,7 +1,7 @@
 defmodule Core.App do
   @moduledoc false
 
-  use Application.Behaviour
+  use Application
 
   def start(_type, _args) do
     Core.Debug.Supervisor.start_link()

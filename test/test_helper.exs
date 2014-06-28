@@ -2,7 +2,7 @@ ExUnit.start
 
 defmodule TestIO do
 
-  use GenEvent.Behaviour
+  use GenEvent
 
   def setup_all() do
     :ok = :error_logger.add_report_handler(TestIO)
@@ -73,7 +73,7 @@ end
 
 defmodule GS do
 
-  use GenServer.Behaviour
+  use GenServer
 
   def start_link(fun, debug_opts \\ []) do
     :gen_server.start_link(__MODULE__, fun, [{ :debug, debug_opts }])
@@ -87,7 +87,7 @@ end
 
 defmodule GE do
 
-  use GenEvent.Behaviour
+  use GenEvent
 
   def start_link(fun) do
     { :ok, pid } = :gen_event.start_link()

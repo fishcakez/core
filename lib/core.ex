@@ -46,98 +46,14 @@ defmodule Core do
 
   ## exceptions
 
-  defexception UncaughtThrowError, [actual: nil] do
-    def message(exception) do
-      "uncaught throw: #{inspect(exception.actual)}"
-    end
-  end
+  defmodule UncaughtThrowError do
 
-  defexception CallError, [:target, :process, :label, :request, :reason] do
-    def message(exception) do
-      "#{format_label(exception.label)} #{inspect(exception.request)} to " <>
-      "#{Core.format(exception.target)} " <>
-      "failed: #{format_reason(exception.reason, exception.process)}"
-    end
+    defexception [actual: nil, message: "uncaught throw"]
 
-    defp format_label(label) when is_atom(label) do
-      case to_string(label) do
-        # label is a module
-        "Elixir." <> _rest ->
-          inspect(label)
-        other ->
-          other
-      end
-    end
-
-    defp format_label(label), do: inspect(label)
-
-    defp format_reason(:noproc, pid) when is_pid(pid) do
-      "#{inspect(pid)} is not alive"
-    end
-
-    # _other can be { name, node_name } or nil
-    defp format_reason(:noproc, _other) do
-      "no process associated with that name"
-    end
-
-    defp format_reason(:noconnection, pid) when is_pid(pid) do
-      "#{inspect(pid)} on #{node(pid)} is disconnected"
-    end
-
-    defp format_reason(:noconnection, { name, node_name }) do
-      "#{name} on #{node_name} is disconnected"
-    end
-
-    defp format_reason(:nomonitor, process) do
-      "#{format_process(process)} can not be monitored"
-    end
-
-    defp format_reason(:timeout, process) do
-      "#{format_process(process)} did not respond in time"
-    end
-
-    defp format_reason({ :EXIT, :normal }, process) do
-      "#{format_process(process)} exited normally"
-    end
-
-    defp format_reason({ :EXIT, :shutdown }, process) do
-      "#{format_process(process)} shutdown"
-    end
-
-    defp format_reason({ :EXIT, { :shutdown, reason } }, process) do
-      "#{format_process(process)} shutdown with reason: #{inspect(reason)}"
-    end
-
-    defp format_reason({ :EXIT, :killed }, process) do
-      "#{format_process(process)} was killed"
-    end
-
-    defp format_reason({ :EXIT, { exception, stack } = reason }, process)
-        when is_exception(exception) and stack !== nil do
-      try do
-        Exception.format_stacktrace(stack)
-      rescue
-        # not a stacktrace
-        _exception ->
-          "#{format_process(process)} exited with reason: #{inspect(reason)}"
-      else
-        formatted_stack ->
-          "#{format_process(process)} raised an exception\n" <>
-          "   (#{inspect(elem(exception, 0))}) #{exception.message}\n" <>
-          "#{formatted_stack}"
-      end
-    end
-
-    defp format_reason({ :EXIT, reason }, process) do
-      "#{format_process(process)} exited with reason: #{inspect(reason)}"
-    end
-
-    defp format_process(pid) when is_pid(pid) do
-      inspect(pid)
-    end
-
-    defp format_process({ name, node_name }) do
-      "#{name} on #{node_name}"
+    def exception(opts) do
+      actual = opts[:actual]
+      message = "uncaught throw: " <> inspect(actual)
+      %Core.UncaughtThrowError{actual: actual, message: message}
     end
   end
 
@@ -415,13 +331,32 @@ defmodule Core do
   def call(target, label, request, timeout) do
     case whereis(target) do
       pid when is_pid(pid) ->
-        call(pid, target, label, request, timeout)
+        case safe_call(pid, label, request, timeout) do
+          {:ok, response} ->
+            response
+          {:error, :noconnection} ->
+            reason = {:nodedown, node(pid)}
+            exit({reason,
+              {__MODULE__, :call, [target, label, request, timeout]}})
+          {:error, reason} ->
+            exit({reason,
+              {__MODULE__, :call, [target, label, request, timeout]}})
+        end
       { local_name, node_name } = process
           when is_atom(local_name) and is_atom(node_name) ->
-        call(process, target, label, request, timeout)
+        case safe_call(process, label, request, timeout) do
+          {:ok, response} ->
+            response
+          {:error, :noconnection} ->
+            reason = {:nodedown, node_name}
+            exit({reason,
+              {__MODULE__, :call, [target, label, request, timeout]}})
+          {:error, reason} ->
+            exit({reason,
+              {__MODULE__, :call, [target, label, request, timeout]}})
+        end
       nil ->
-        raise Core.CallError, [target: target, label: label, request: request,
-          reason: :noproc]
+        exit({:noproc, {__MODULE__, :call, [target, label, request, timeout]}})
     end
   end
 
@@ -434,7 +369,7 @@ defmodule Core do
   @spec reply(from, response) :: response
   def reply({ to, tag }, response) do
     try do
-      Process.send(to, { tag, response })
+      Kernel.send(to, { tag, response })
     catch
       ArgumentError ->
         response
@@ -469,7 +404,7 @@ defmodule Core do
 
   This function will raise an ArgumentError if a name is provided and no process
   is associated with the name - unless the name is for a locally registered name
-  on another node. Similar to the behaviour of `Process.send/2`.
+  on another node. Similar to the behaviour of `Kernel.send/2`.
 
   This function will block to attempt a connection to a disconnected node, and
   so messages sent by this function will arrive in order, if they are received.
@@ -481,7 +416,7 @@ defmodule Core do
         raise ArgumentError,
           message: "no process associated with #{format(target)}"
       process ->
-        Process.send(process, msg)
+        Kernel.send(process, msg)
     end
   end
 
@@ -534,7 +469,7 @@ defmodule Core do
     catch
       # Turn throw into an exception.
       :throw, value ->
-        exception = Core.UncaughtThrowError[actual: value]
+        exception = Core.UncaughtThrowError.exception([actual: value])
         base_stop(mod, parent, { exception, System.stacktrace() })
       # Exits are not caught as they are an explicit intention to exit.
     end
@@ -555,7 +490,7 @@ defmodule Core do
     catch
       # Turn throw into an exception.
       :throw, value ->
-        exception = Core.UncaughtThrowError[actual: value]
+        exception = Core.UncaughtThrowError.exception([actual: value])
         base_stop(mod, parent, { exception, System.stacktrace() })
       # Exits are not caught as they are an explicit intention to exit.
     end
@@ -721,42 +656,32 @@ defmodule Core do
 
   ## communication
 
-  defp call(process, target, label, request, timeout) do
+  defp safe_call(process, label, request, timeout) do
     try do
       Process.monitor(process)
     rescue
       ArgumentError ->
-        reason = case node() do
+        case node() do
           # Can't connect to other nodes
           :"nonode@nohost" ->
-            :noconnection
+            {:error, :noconnection}
           # Target node is feature weak
           _other ->
-            :nomonitor
+            {:error, :nomonitor}
         end
-        raise Core.CallError, [target: target, process: process, label: label,
-          request: request, reason: reason]
     else
       tag ->
         Process.send(process, { label, { self(), tag }, request }, [:noconnect])
         receive do
           { ^tag, response } ->
             Process.demonitor(tag, [:flush])
-            response
-          { :DOWN, ^tag, _, _, :noproc } ->
-            raise Core.CallError, [target: target, process: process,
-              label: label, request: request, reason: :noproc]
-          { :DOWN, ^tag, _, _, :noconnection } ->
-            raise Core.CallError, [target: target, process: process,
-              label: label, request: request, reason: :noconnection]
+            {:ok, response}
           { :DOWN, ^tag, _, _, reason } ->
-            raise Core.CallError, [target: target, process: process,
-              label: label, request: request, reason: { :EXIT, reason }]
+            {:error, reason}
         after
           timeout ->
             Process.demonitor(tag, [:flush])
-            raise Core.CallError, [target: target, process: process,
-              label: label, request: request, reason: :timeout]
+            {:error, :timeout}
         end
     end
   end
@@ -766,7 +691,7 @@ defmodule Core do
       Process.send(process, msg, [:noconnect])
     else
       :noconnect ->
-        Process.spawn(Process, :send, [process, msg])
+        Kernel.spawn(Process, :send, [process, msg])
         :ok
       :ok ->
         :ok

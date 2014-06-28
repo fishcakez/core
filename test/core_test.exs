@@ -34,7 +34,7 @@ defmodule CoreTest do
     starter = self()
     fun = fn(parent, _debug) ->
       Core.init_ack()
-      Process.send(starter, { :parent, parent })
+      send(starter, { :parent, parent })
       close()
     end
     assert { :ok, pid } = Core.start_link(__MODULE__, fun)
@@ -145,7 +145,7 @@ defmodule CoreTest do
     starter = self()
     fun = fn(parent, _debug) ->
       Core.init_ack()
-      Process.send(starter, { :parent, parent })
+      send(starter, { :parent, parent })
       close()
     end
     { :ok, pid } = Core.start(__MODULE__, fun)
@@ -182,7 +182,7 @@ defmodule CoreTest do
   test "start with link" do
     starter = self()
     fun = fn(parent, _debug) ->
-      Process.send(starter, { :parent, parent })
+      send(starter, { :parent, parent })
       Core.init_ack()
       close()
     end
@@ -197,7 +197,7 @@ defmodule CoreTest do
     starter = self()
     fun = fn(parent, _debug) ->
       Core.init_ack()
-      Process.send(starter, { :parent, parent })
+      send(starter, { :parent, parent })
       close()
     end
     pid = Core.spawn_link(__MODULE__, fun)
@@ -248,7 +248,7 @@ defmodule CoreTest do
       "** Process   == #{erl_inspect(pid)}\n" <>
       "** Parent    == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [:init_error]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [:init_error]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -272,7 +272,7 @@ defmodule CoreTest do
       "** Process   == #{erl_inspect(pid)}\n" <>
       "** Parent    == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [reason]))}\n\n"
     assert String.contains?(output, [report])
     log = "** Core.Debug #{inspect(pid)} event log:\n" <>
       "** Core.Debug #{inspect(pid)} :test_event\n\n"
@@ -332,7 +332,7 @@ defmodule CoreTest do
   test "spawn_link register local name" do
     starter = self()
     fun = fn(_parent, _debug) ->
-      Process.send(starter, { :registered, self() })
+      send(starter, { :registered, self() })
       Core.init_ack()
       close()
     end
@@ -355,7 +355,7 @@ defmodule CoreTest do
     starter = self()
     fun = fn(parent, _debug) ->
       Core.init_ack()
-      Process.send(starter, { :parent, parent })
+      send(starter, { :parent, parent })
       close()
     end
     pid = Core.spawn(__MODULE__, fun)
@@ -369,7 +369,7 @@ defmodule CoreTest do
   test "spawn register local name" do
     starter = self()
     fun = fn(_parent, _debug) ->
-      Process.send(starter, { :registered, self() })
+      send(starter, { :registered, self() })
       Core.init_ack()
       close()
     end
@@ -415,7 +415,7 @@ defmodule CoreTest do
       "** Process == #{erl_inspect(pid)}\n" <>
       "** Parent  == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [:error]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [:error]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -439,7 +439,7 @@ defmodule CoreTest do
       "** Process == #{erl_inspect(pid)}\n" <>
       "** Parent  == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [reason]))}\n\n"
     assert String.contains?(output, [report])
     log = "** Core.Debug #{inspect(pid)} event log:\n" <>
       "** Core.Debug #{inspect(pid)} :test_event\n\n"
@@ -497,10 +497,10 @@ defmodule CoreTest do
   end
 
   test "uncaught exception" do
-    exception = ArgumentError[message: "hello"]
+    exception = ArgumentError.exception([message: "hello"])
     fun = fn(_parent, _debug) ->
       Core.init_ack()
-      raise exception, []
+      raise exception
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(__MODULE__, fun)
@@ -514,7 +514,7 @@ defmodule CoreTest do
       "** Process == #{erl_inspect(pid)}\n" <>
       "** Parent  == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n" <>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -526,7 +526,7 @@ defmodule CoreTest do
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(__MODULE__, fun)
     assert_receive { :EXIT, ^pid, reason }, 200, "child did not exit"
-    exception = Core.UncaughtThrowError[actual: :thrown]
+    exception = Core.UncaughtThrowError.exception([actual: :thrown])
     assert { ^exception, stack } = reason
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
@@ -536,7 +536,7 @@ defmodule CoreTest do
       "** Process == #{erl_inspect(pid)}\n" <>
       "** Parent  == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -554,11 +554,11 @@ defmodule CoreTest do
   end
 
   test "uncaught exception after hibernate" do
-    exception = ArgumentError[message: "hello"]
+    exception = ArgumentError.exception([message: "hello"])
     fun = fn(parent, debug) ->
       Core.init_ack()
       # send message to self to wake up immediately
-      Process.send(self(), :awaken)
+      send(self(), :awaken)
       fun2 = fn(_parent, _debug) -> raise ArgumentError, [message: "hello"] end
       Core.hibernate(__MODULE__, :continue, fun2, parent, debug)
     end
@@ -574,7 +574,7 @@ defmodule CoreTest do
       "** Process == #{erl_inspect(pid)}\n" <>
       "** Parent  == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -582,14 +582,14 @@ defmodule CoreTest do
     fun = fn(parent, debug) ->
       Core.init_ack()
       # send message to self to wake up immediately
-      Process.send(self(), :awaken)
+      send(self(), :awaken)
       fun2 = fn(_parent, _debug) -> throw(:thrown) end
       Core.hibernate(__MODULE__, :continue, fun2, parent, debug)
     end
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(__MODULE__, fun)
     assert_receive { :EXIT, ^pid, reason }, 200, "child did not exit"
-    exception = Core.UncaughtThrowError[actual: :thrown]
+    exception = Core.UncaughtThrowError.exception([actual: :thrown])
     assert { ^exception, stack } = reason
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
@@ -599,7 +599,7 @@ defmodule CoreTest do
       "** Process == #{erl_inspect(pid)}\n" <>
       "** Parent  == #{erl_inspect(self())}\n" <>
       "** Reason for termination == \n"<>
-      "#{String.from_char_data!(:io_lib.format('** ~p', [reason]))}\n\n"
+      "#{List.to_string(:io_lib.format('** ~p', [reason]))}\n\n"
     assert TestIO.binread() === report
   end
 
@@ -607,7 +607,7 @@ defmodule CoreTest do
     fun = fn(parent, debug) ->
       Core.init_ack()
       # send message to self to wake up immediately
-      Process.send(self(), :awaken)
+      send(self(), :awaken)
       fun2 = fn(_parent, _debug) -> exit(:exited) end
       Core.hibernate(__MODULE__, :continue, fun2, parent, debug)
     end
@@ -706,10 +706,8 @@ defmodule CoreTest do
       close()
     end
     pid = Core.spawn_link(__MODULE__, fun)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} did not respond in time",
-      fn() -> Core.call(pid, __MODULE__, :hello, 100) end
+    assert catch_exit(Core.call(pid, __MODULE__, :hello, 100))
+      == {:timeout, {Core, :call, [pid, __MODULE__, :hello, 100]}}
     close(pid)
     assert TestIO.binread() === <<>>
   end
@@ -721,14 +719,12 @@ defmodule CoreTest do
     end
     pid = Core.spawn_link(__MODULE__, fun)
     close(pid)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} is not alive",
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
-    assert TestIO.binread() === <<>>
+    assert catch_exit(Core.call(pid, __MODULE__, :hello, 500))
+      == {:noproc, {Core, :call, [pid, __MODULE__, :hello, 500]}}
+   assert TestIO.binread() === <<>>
   end
 
-  test "call to pid that exits normally" do
+  test "call to pid that exits" do
     fun = fn(_parent, _debug) ->
       Core.init_ack()
       receive do
@@ -737,165 +733,39 @@ defmodule CoreTest do
       end
     end
     pid = Core.spawn_link(__MODULE__, fun)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} exited normally",
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
+    assert catch_exit(Core.call(pid, __MODULE__, :hello, 500))
+      == {:normal, {Core, :call, [pid, __MODULE__, :hello, 500]}}
     close(pid)
     assert TestIO.binread() === <<>>
   end
 
-  test "call to pid that shuts down" do
-    fun = fn(_parent, _debug) ->
-      Core.init_ack()
-      receive do
-        { __MODULE__, _from, :hello } ->
-          exit(:shutdown)
-      end
-    end
-    pid = Core.spawn_link(__MODULE__, fun)
-    trap = Process.flag(:trap_exit, true)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} shutdown",
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
-    assert_receive { :EXIT, ^pid, :shutdown }
-    Process.flag(:trap_exit, trap)
-    assert TestIO.binread() === <<>>
-  end
-
-  test "call to pid that shuts down with term" do
-    fun = fn(_parent, _debug) ->
-      Core.init_ack()
-      receive do
-        { __MODULE__, _from, :hello } ->
-          exit({ :shutdown, nil })
-      end
-    end
-    pid = Core.spawn_link(__MODULE__, fun)
-    trap = Process.flag(:trap_exit, true)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} shutdown with reason: nil",
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
-    assert_receive { :EXIT, ^pid, { :shutdown, nil } }
-    Process.flag(:trap_exit, trap)
-    assert TestIO.binread() === <<>>
-  end
-
-  test "call to pid that raises an exception" do
-    exception = ArgumentError[message: "hello"]
-    stack = try do
-      throw(:stacktrace)
-    catch
-      :stacktrace ->
-        System.stacktrace()
-    end
-    fun = fn(_parent, _debug) ->
-      Core.init_ack()
-      receive do
-        { __MODULE__, _from, :hello } ->
-          # this will look like exception was raised with stack
-          exit({ exception, stack })
-      end
-    end
-    pid = Core.spawn_link(__MODULE__, fun)
-    trap = Process.flag(:trap_exit, true)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} raised an exception\n" <>
-      "   (ArgumentError) hello\n" <>
-      Exception.format_stacktrace(stack),
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
-    assert_receive { :EXIT, ^pid, { ^exception, ^stack } }
-    Process.flag(:trap_exit, trap)
-    assert TestIO.binread() === <<>>
-  end
-
-  test "call to pid that exits with exception and nil stack" do
-    exception = ArgumentError[message: "hello"]
-    fun = fn(_parent, _debug) ->
-      Core.init_ack()
-      receive do
-        { __MODULE__, _from, :hello } ->
-          # this looks like an exception and Exception.stacktrace will provide
-          # a generated stacktrace in the place of nil
-          exit({ exception, nil })
-      end
-    end
-    pid = Core.spawn_link(__MODULE__, fun)
-    trap = Process.flag(:trap_exit, true)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} exited with reason: #{inspect({ exception, nil })}",
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
-    assert_receive { :EXIT, ^pid, { ^exception, nil } }
-    Process.flag(:trap_exit, trap)
-    assert TestIO.binread() === <<>>
-  end
-
-  test "call to pid that is killed" do
-    fun = fn(_parent, _debug) ->
-      Core.init_ack()
-      receive do
-        { __MODULE__, _from, :hello } ->
-          Process.exit(self(), :kill)
-      end
-    end
-    pid = Core.spawn_link(__MODULE__, fun)
-    trap = Process.flag(:trap_exit, true)
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to #{inspect(pid)} failed: " <>
-      "#{inspect(pid)} was killed",
-      fn() -> Core.call(pid, __MODULE__, :hello, 500) end
-    assert_receive { :EXIT, ^pid, :killed }
-    Process.flag(:trap_exit, trap)
-    assert TestIO.binread() === <<>>
-  end
-
   test "call to local name that is not registered" do
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to call_bad_local failed: " <>
-      "no process associated with that name",
-      fn() -> Core.call(:call_bad_local, __MODULE__, :hello, 500) end
+    assert catch_exit(Core.call(:call_bad_local, __MODULE__, :hello, 500))
+      == {:noproc, {Core, :call, [:call_bad_local, __MODULE__, :hello, 500]}}
   end
 
   test "call to local name with local node that is not registered" do
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to call_bad_local failed: " <>
-      "no process associated with that name",
-      fn() ->
-        Core.call({ :call_bad_local, node() }, __MODULE__, :hello, 500)
-      end
+    assert catch_exit(Core.call({:call_bad_local, node()}, __MODULE__, :hello, 500))
+      == {:noproc,
+        {Core, :call, [{:call_bad_local, node()}, __MODULE__, :hello, 500]}}
   end
 
   test "call to global name that is not registered" do
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to :call_bad_global (global) failed: " <>
-      "no process associated with that name",
-      fn() ->
-        Core.call({ :global, :call_bad_global }, __MODULE__, :hello, 500)
-      end
+    assert catch_exit(Core.call({:global, :call_bad_global}, __MODULE__, :hello, 500))
+      == {:noproc,
+        {Core, :call, [{:global, :call_bad_global}, __MODULE__, :hello, 500]}}
   end
 
   test "call to via name that is not registered" do
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to :call_bad_via (global) failed: " <>
-      "no process associated with that name",
-      fn() ->
-        Core.call({ :via, :global, :call_bad_via }, __MODULE__, :hello, 500)
-      end
+    assert catch_exit(Core.call({:via, :global, :call_bad_via}, __MODULE__, :hello, 500))
+      == {:noproc,
+        {Core, :call, [{:via, :global, :call_bad_via}, __MODULE__, :hello, 500]}}
   end
 
   test "call to local name on bad node" do
-    assert_raise Core.CallError,
-      "#{inspect(__MODULE__)} :hello to " <>
-      "call_bad_local on node_does_not_exist failed: " <>
-      "call_bad_local on node_does_not_exist is disconnected",
-      fn() ->
-        Core.call({ :call_bad_local, :node_does_not_exist }, __MODULE__, :hello,
-          500)
-      end
+    assert catch_exit(Core.call({:call_bad_local, :node_does_not_exist}, __MODULE__, :hello, 500))
+      == {{:nodedown, :node_does_not_exist},
+        {Core, :call, [{:call_bad_local, :node_does_not_exist}, __MODULE__, :hello, 500]}}
   end
 
   test "cast to pid" do
@@ -903,7 +773,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -919,7 +789,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -935,7 +805,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -951,7 +821,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
      close()
     end
@@ -968,7 +838,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -1003,7 +873,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -1019,7 +889,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -1036,7 +906,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -1053,7 +923,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
      close()
     end
@@ -1070,7 +940,7 @@ defmodule CoreTest do
       Core.init_ack()
       receive do
         { __MODULE__, :hello } ->
-          Process.send(parent,  { :hi, self() })
+          send(parent,  { :hi, self() })
       end
       close()
     end
@@ -1120,7 +990,7 @@ defmodule CoreTest do
   defp close(pid) do
     ref = Process.monitor(pid)
     Process.unlink(pid)
-    Process.send(pid, :close)
+    send(pid, :close)
     receive do
       { :DOWN, ^ref, _, _, reason } ->
         reason
@@ -1143,7 +1013,7 @@ defmodule CoreTest do
   end
 
   defp erl_inspect(term) do
-    String.from_char_data!(:io_lib.format('~p', [term]))
+    List.to_string(:io_lib.format('~p', [term]))
   end
 
 end
