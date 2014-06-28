@@ -518,8 +518,7 @@ defmodule CoreTest do
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(__MODULE__, fun)
     assert_receive { :EXIT, ^pid, reason }, 200, "child did not exit"
-    exception = Core.UncaughtThrowError.exception([actual: :thrown])
-    assert { ^exception, stack } = reason
+    assert { { :nocatch, :thrown }, stack } = reason
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
     Process.flag(:trap_exit, trap)
@@ -581,8 +580,7 @@ defmodule CoreTest do
     trap = Process.flag(:trap_exit, :true)
     pid = Core.spawn_link(__MODULE__, fun)
     assert_receive { :EXIT, ^pid, reason }, 200, "child did not exit"
-    exception = Core.UncaughtThrowError.exception([actual: :thrown])
-    assert { ^exception, stack } = reason
+    assert { { :nocatch, :thrown }, stack } = reason
     assert { __MODULE__, _, _, _ } = hd(stack),
       "stacktrace not from __MODULE__"
     Process.flag(:trap_exit, trap)

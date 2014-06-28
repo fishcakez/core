@@ -44,19 +44,6 @@ defmodule Core do
   @typep state :: any
   @type parent :: pid
 
-  ## exceptions
-
-  defmodule UncaughtThrowError do
-
-    defexception [actual: nil, message: "uncaught throw"]
-
-    def exception(opts) do
-      actual = opts[:actual]
-      message = "uncaught throw: " <> inspect(actual)
-      %Core.UncaughtThrowError{actual: actual, message: message}
-    end
-  end
-
   ## start/spawn api
 
   @doc """
@@ -465,10 +452,10 @@ defmodule Core do
       exception ->
         base_stop(mod, parent, { exception, System.stacktrace() })
     catch
-      # Turn throw into an exception.
+      # Turn throw into the error it would be.
       :throw, value ->
-        exception = Core.UncaughtThrowError.exception([actual: value])
-        base_stop(mod, parent, { exception, System.stacktrace() })
+        error = {:nocatch, value}
+        base_stop(mod, parent, { error, System.stacktrace() })
       # Exits are not caught as they are an explicit intention to exit.
     end
   end
@@ -486,10 +473,10 @@ defmodule Core do
       exception ->
         base_stop(mod, parent, { exception, System.stacktrace() })
     catch
-      # Turn throw into an exception.
+      # Turn throw into the error it would be.
       :throw, value ->
-        exception = Core.UncaughtThrowError.exception([actual: value])
-        base_stop(mod, parent, { exception, System.stacktrace() })
+        error = {:nocatch, value}
+        base_stop(mod, parent, { error, System.stacktrace() })
       # Exits are not caught as they are an explicit intention to exit.
     end
   end
