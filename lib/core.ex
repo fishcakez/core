@@ -317,15 +317,13 @@ defmodule Core do
   @doc """
   Calls the Core process associated the with name or process and returns the
   reponse.
-  Raises a `Core.CallError` if the process does not reply before the timeout or
-  if the process exits without replying.
 
   The message is sent in the form `{ label, from, request }`. A response is sent
   by calling `reply(from, response)`.
 
-  Rescuing a `Core.CallError` may result in unexpected messages arriving in the
-  calling processes mailbox. Therefore it is recommended to terminate soon after
-  if a `Core.CallError` must be rescued.
+  Catching an exit from this function may result in unexpected messages
+  arriving in the calling processes mailbox. It is recommended to terminate soon
+  after an exit is caught.
   """
   @spec call(t, label, request, timeout) :: response
   def call(target, label, request, timeout) do

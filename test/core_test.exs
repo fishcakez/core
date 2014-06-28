@@ -22,14 +22,6 @@ defmodule CoreTest do
     TestIO.setup()
   end
 
-  teardown context do
-    TestIO.teardown(context)
-  end
-
-  teardown_all do
-    TestIO.teardown_all()
-  end
-
   test "start_link with init_ack/0" do
     starter = self()
     fun = fn(parent, _debug) ->

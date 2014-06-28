@@ -11,14 +11,7 @@ defmodule Core.DebugTest do
 
   setup do
     TestIO.setup()
-  end
-
-  teardown context do
-    TestIO.teardown(context)
-  end
-
-  teardown_all do
-    TestIO.teardown_all()
+    :ok
   end
 
   test "get/set default options" do

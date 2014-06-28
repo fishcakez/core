@@ -2,31 +2,27 @@ ExUnit.start
 
 defmodule TestIO do
 
+  use ExUnit.Callbacks
   use GenEvent
 
   def setup_all() do
     :ok = :error_logger.add_report_handler(TestIO)
     :error_logger.tty(false)
+    on_exit(fn() ->
+        :error_logger.tty(true)
+        :error_logger.delete_report_handler(TestIO)
+      end)
+    :ok
   end
 
   def setup() do
     stdio = Process.group_leader()
     { :ok, stringio } = StringIO.open(<<>>)
     Process.group_leader(self(), stringio)
-    { :ok, %{:stdio => stdio, StringIO => stringio} }
-  end
-
-  def teardown(context) do
-    stringio = Map.fetch!(context, StringIO)
-    stdio = Map.fetch!(context, :stdio)
-    Process.group_leader(self(), stdio)
-    StringIO.close(stringio)
+    on_exit(fn() ->
+        Process.group_leader(self(), stdio)
+      end)
     :ok
-  end
-
-  def teardown_all() do
-    :error_logger.tty(true)
-    :error_logger.delete_report_handler(TestIO)
   end
 
   def binread() do

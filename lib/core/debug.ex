@@ -475,7 +475,7 @@ defmodule Core.Debug do
     format = '~4..0B-~2..0B-~2..0BT~2..0B:~2..0B:~2..0B'
     args = [year, month, day, hour, min, sec]
     :io_lib.format(format, args)
-      |> iodata_to_binary()
+      |> IO.iodata_to_binary()
   end
 
   ## print

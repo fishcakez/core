@@ -41,21 +41,14 @@ defmodule Core.SysTest do
   end
 
   setup_all do
-    File.touch(Path.join(__DIR__, "logfile"))
+    logfile = (Path.join(__DIR__, "logfile"))
+    File.touch(logfile)
+    on_exit(fn() -> File.rm(Path.join(__DIR__, "logfile")) end)
     TestIO.setup_all()
   end
 
   setup do
     TestIO.setup()
-  end
-
-  teardown context do
-    TestIO.teardown(context)
-  end
-
-  teardown_all do
-    File.rm(Path.join(__DIR__, "logfile"))
-    TestIO.teardown_all()
   end
 
   test "ping" do
