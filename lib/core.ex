@@ -3,16 +3,117 @@ defmodule Core do
   Functions for handling process initiation, communication and termination.
 
   This module provides the basic features required for building OTP compliant
-  processes. There are a few examples for using these functions to create OTP
-  processes in the documentation for `Core.Behaviour` and `Core.Debug`.
+  processes. Many functions in this module are only intended for use in
+  processes initiated by functions in this module.
 
-  Many functions in this module are only intended for use in processes initiated
-  by functions in this module.
+  ## Examples
+
+      defmodule Core.HelloWorld do
+
+        use Core
+
+        @spec start_link() :: { :ok, pid }
+        def start_link(), do: Core.start_link(__MODULE__, nil)
+
+        def init(_parent, _debug, nil) do
+          Core.init_ack()
+          IO.puts("Hello World!")
+        end
+
+      end
+
+      defmodule Core.Fn do
+
+        use Core
+
+        @spec start_link((() -> any)) :: { :ok, pid }
+        def start_link(fun), do: Core.start_link(__MODULE__, fun)
+
+        @spec spawn_link((() -> any)) :: pid
+        def spawn_link(fun), do: Core.spawn_link(__MODULE__, fun)
+
+        def init(parent, debug, fun) when is_function(fun, 0) do
+          Core.init_ack()
+          try do
+            fun.()
+          rescue
+            exception ->
+              reason = { exception, System.stacktrace() }
+              Core.stop(__MODULE__, fun, parent, debug, reason)
+          catch
+            :throw, value ->
+              exception = Core.UncaughtThrowError[actual: value]
+              reason = { exception, System.stacktrace() }
+              Core.stop(__MODULE__, fun, parent, debug, reason)
+          end
+        end
+
+      end
+
+      defmodule Core.PingPong do
+
+        use Core
+
+        @spec ping(Core.t) :: :pong
+        def ping(process), do: Core.call(process, __MODULE__, :ping, 5000)
+
+        @spec count(Core.t) :: non_neg_integer
+        def count(process), do: Core.call(process, __MODULE__, :count, 5000)
+
+        @spec close(Core.t) :: :ok
+        def close(process), do: Core.call(process, __MODULE__, :close, 5000)
+
+        @spec start_link() :: { :ok, pid }
+        def start_link(), do: Core.start_link(__MODULE__, nil)
+
+        def init(_parent, _debug, nil) do
+          Core.init_ack()
+          loop(0)
+        end
+
+        defp loop(count) do
+          receive do
+            { __MODULE__, from, :ping } ->
+              Core.reply(from, :pong)
+              loop(count + 1)
+            { __MODULE__, from, :count } ->
+              Core.reply(from, count)
+              loop(count)
+            { __MODULE__, from, :close } ->
+              Core.reply(from, :ok)
+              terminate(count)
+          end
+        end
+
+        defp terminate(_count) do
+          exit(:normal)
+        end
+
+      end
+
+  `Core.Debug` and `Core.Sys` contain more advanced versions of the last
+  example.
   """
 
   use Behaviour
 
   defcallback  init(parent, Core.Debug.t, args) :: no_return
+
+  defmacro __using__(_options) do
+    quote location: :keep do
+
+      @behaviour Core
+      require Core.Debug
+
+      @doc false
+      def init(_parent, _debug, _args) do
+        Core.init_ignore()
+      end
+
+      defoverridable [init: 3]
+
+    end
+  end
 
   ## start/spawn types
 

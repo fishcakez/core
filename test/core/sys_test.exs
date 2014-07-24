@@ -3,8 +3,7 @@ Code.require_file "../test_helper.exs", __DIR__
 defmodule Core.SysTest do
   use ExUnit.Case
 
-  use Core.Behaviour
-  use Core.Sys.Behaviour
+  use Core.Sys
 
   def init(parent, debug, fun) do
     Core.init_ack()

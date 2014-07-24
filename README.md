@@ -19,7 +19,7 @@ Start a process that prints "Hello World" to `:stdio`.
 ```elixir
 defmodule HelloWorld do
 
-  use Core.Behaviour
+  use Core
 
   def start_link(), do: Core.start_link(__MODULE__, nil)
 
@@ -58,7 +58,7 @@ Starts a process that can be pinged.
 ```elixir
 defmodule PingPong do
 
-  use Core.Behaviour
+  use Core
 
   @spec ping(Core.t) :: :pong
   def ping(process), do: Core.call(process, __MODULE__, :ping, 5000)
@@ -113,8 +113,7 @@ For example `Core.Sys.set_state(pid, 0)` will reset the `count` to `0`.
 
 defmodule PingPong do
 
-  use Core.Behaviour
-  use Core.Sys.Behaviour
+  use Core.Sys
 
   @spec ping(Core.t) :: :pong
   def ping(process), do: Core.call(process, __MODULE__, :ping, 5000)

@@ -3,7 +3,7 @@ Code.require_file "test_helper.exs", __DIR__
 defmodule CoreTest do
   use ExUnit.Case
 
-  use Core.Behaviour
+  use Core
   require Core.Debug
 
   def init(parent, debug, fun) do

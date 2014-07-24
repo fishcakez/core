@@ -11,7 +11,7 @@ defmodule Core.Debug do
 
       defmodule Core.PingPong do
 
-        use Core.Behaviour
+        use Core
 
         @spec ping(Core.t) :: :pong
         def ping(process), do: Core.call(process, __MODULE__, :ping, 5000)
