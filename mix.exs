@@ -3,7 +3,7 @@ defmodule Core.Mixfile do
 
   def project do
     [ app: :core,
-      version: "0.13.1",
+      version: "0.14.0",
       elixir: "~> 0.14.1",
       description: "Library for selective receive OTP processes",
       package: package(),
