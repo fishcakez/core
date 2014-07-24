@@ -2,10 +2,7 @@
 Library for implementing OTP processes natively in Elixir.
 
 Provides utility functions and macros to implement 100% OTP compliant
-processes with 100%\* compatibility with all Erlang/OTP modules and tools.
-
-\* The getting and replacing of process state debug functions will not
-behave idenitically with `:sys` until 17.0 final is released.
+processes with 100% compatibility with all Erlang/OTP modules and tools.
 
 # Installing
 ```
