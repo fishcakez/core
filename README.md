@@ -32,23 +32,12 @@ end
 ```
 
 # Features
-* Call processes (including Erlang/OTP's `:gen_server` processes) with
-  very detailed exception messages.
 * Asynchronous and synchronous process initiation (with name registration).
 * Automatic logging of un-rescued exceptions.
 * System calls that work with any OTP compliant process.
 * Receive macro to handle system messages.
 * Supports progressive enhancement of OTP features: system message
   automatically handled until you want to change the default behaviour.
-
-# Call a :gen\_server registered as :server
-```elixir
-Core.call(:"$gen_call", :server, request, timeout)
-```
-If `:server` does not exist:
-```
-** (Core.CallError) $gen_call to server failed: no process associated with that name
-```
 
 # Basic Ping Server
 Starts a process that can be pinged.
