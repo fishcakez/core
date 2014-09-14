@@ -16,7 +16,8 @@ defmodule Core.Mixfile do
   end
 
   defp package() do
-    [ contributors: ["James Fish"],
+    [files: ["lib", "mix.exs", "README.md", "LICENSE"],
+      contributors: ["James Fish"],
       licenses: ["Apache 2.0"],
       links: [{ "Github", "https://github.com/fishcakez/core" }] ]
   end
