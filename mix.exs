@@ -3,8 +3,8 @@ defmodule Core.Mixfile do
 
   def project do
     [ app: :core,
-      version: "0.14.0",
-      elixir: "~> 0.14.1",
+      version: "0.14.1",
+      elixir: "~> 0.14.1 or ~> 0.15.0 or ~> 1.0.0 or ~> 1.1.0-dev",
       description: "Library for selective receive OTP processes",
       package: package(),
       deps: deps() ]
@@ -22,7 +22,7 @@ defmodule Core.Mixfile do
   end
 
   defp deps() do
-    [{ :ex_doc, github: "elixir-lang/ex_doc", only: [:docs]}]
+    [{ :ex_doc, ">= 0.5.2", only: [:docs]}]
   end
 
 end
